@@ -1,0 +1,4 @@
+Exercise images (assets/ex/*_0.jpg, *_1.jpg) and the GIFs built from them come from "Free Exercise DB"
+https://github.com/yuhonas/free-exercise-db  - released under The Unlicense (public domain dedication, SPDX: Unlicense,
+as declared in the repository's license metadata/README). The original provenance of the pictures is not independently verified by this project.
+The GIFs are two-frame loops (start/end position) made by fetch_exercise_media.py.
