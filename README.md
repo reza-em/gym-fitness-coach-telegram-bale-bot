@@ -1,6 +1,57 @@
+<!-- readme-top -->
+<div align="center">
+
+<img src="docs/banner.svg" alt="Gym Fitness Coach — Workout plan & muscle-gain tracker bot" width="100%">
+
 # Gym Fitness Coach — Workout Plan & Muscle-Gain Tracker Bot (Telegram & Bale)
 
+[![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE) ![Python 3](https://img.shields.io/badge/python-3-3776AB?logo=python&logoColor=white) ![Telegram](https://img.shields.io/badge/Telegram-bot-26A5E4?logo=telegram&logoColor=white) ![Bale](https://img.shields.io/badge/Bale-bot-1BBE8C) [![GitHub stars](https://img.shields.io/github/stars/reza-em/gym-fitness-coach-telegram-bale-bot?style=social)](https://github.com/reza-em/gym-fitness-coach-telegram-bale-bot/stargazers)
+
 > Telegram & Bale gym coach bot: weekly progressive-overload workout plan, set logging, next-weight suggestions, PRs, bodyweight charts, nutrition, creatine/gainer planning. Men/women programs. Persian UI.
+
+**[فارسی](#-فارسی) · [English](#-english) · [Русский](#-русский) · [Deutsch](#-deutsch)**
+
+⭐ **If this project is useful to you, please give it a star** — it helps other people find it. [**Star on GitHub**](https://github.com/reza-em/gym-fitness-coach-telegram-bale-bot/stargazers) · 🍴 [Fork](https://github.com/reza-em/gym-fitness-coach-telegram-bale-bot/fork) · 🐛 [Issues](https://github.com/reza-em/gym-fitness-coach-telegram-bale-bot/issues)
+
+</div>
+
+## ✨ Highlights
+
+- 🏋️ **8-week program** with deload weeks; separate men / women programs, 3- or 4-day splits
+- 📝 **Set logging** (`60x8`), 1RM estimates, personal records and an automatic **next-weight suggestion**
+- 📈 Bodyweight and measurement **charts**, weekly volume, progress export (CSV/ZIP)
+- 🍽 Nutrition targets (calories / protein / macros), Iranian meal menu, gainer & creatine scheduling
+- ⏰ Reminders (workout, creatine, water, sleep, weigh-in) and an automatic weekly review
+- 🎬 Exercise images/animations from the public-domain Free Exercise DB
+- ⚠️ Not medical advice — the bot says so, and refuses steroid / PED questions
+
+## 🎬 Demo
+
+<div align="center">
+<img src="docs/demo.gif" alt="Animated illustrative mockup of a Gym Fitness Coach chat" width="320">
+</div>
+
+<div align="center">
+<img src="docs/screenshots.png" alt="Illustrative mockup screenshots of Gym Fitness Coach" width="100%">
+</div>
+
+> 🖼 **These are illustrative mockups**, rendered locally from scripted conversations (see [`docs/mockups`](docs/mockups)). They are not real chats and contain no real user data; names, numbers and links are examples.
+
+## 🚀 Quick start
+
+```bash
+git clone https://github.com/reza-em/gym-fitness-coach-telegram-bale-bot.git && cd gym-fitness-coach-telegram-bale-bot
+python3 -m venv venv && ./venv/bin/pip install -r requirements.txt
+export FITNESS_TELEGRAM_BOT_TOKEN=...   # optional, @BotFather
+export FITNESS_BALE_BOT_TOKEN=...       # optional, Bale
+export OWNER_ID=123456789
+./run.sh            # ./run.sh telegram | ./run.sh bale
+./venv/bin/python test_offline.py
+```
+
+More options, admin panel and platform notes are in the sections below. Tokens are read only from environment variables — never commit them.
+
+---
 
 ## 🌐 فارسی
 
