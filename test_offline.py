@@ -473,6 +473,40 @@ m = mark(); say(TESTER, "/macros"); tx = texts_out(m)
 ok("هنوز وزن هدف ثبت نکرده‌ای" in tx and any(d_.startswith("mc:c:") for d_ in datas(m)), "no saved goal -> height-based suggestions as buttons")
 db.update_user(TESTER, goal_w=g0); say(TESTER, "/cancel")
 
+# ============================================================ 12. 📂 body-type programs (چاقی / لاغری / تناسب)
+print("== body-type programs")
+import programs_db as PDB
+ok("bt:menu" in json.dumps(json.loads(ui.menu_markup())), "main menu has the 📂 body-type entry")
+ok("/bodytype" in texts.HELP, "help mentions /bodytype")
+ut = db.get_user(TESTER)
+ok(PDB.category(ut) == "lean", "tester (185 cm / 60 kg) auto-classified as لاغری")
+m = mark(); press(TESTER, "bt:menu"); tx = texts_out(m); dd = datas(m)
+ok("برنامه بر اساس وضعیت بدنی" in tx and "لاغری" in tx and "BMI" in tx, "screen shows the detected category + BMI")
+ok(all(X.ex_name(e) in tx for e, _ in P.template_for(ut)[0][1]), "screen lists the user's current template")
+ok(dd and dd[-1] == "m:menu" and buttons(m)[-1]["text"] == texts.BACK, "◀️ بازگشت (ui.with_back) to the main menu")
+ok(all(f"bt:d:{d}" in dd for d in PDB.DAYS) and "bt:cat" in dd, "2-6 day previews + category override button")
+m = mark(); press(TESTER, "bt:d:6"); tx = texts_out(m)
+ok("bt:use:6" in datas(m) and "پیش‌نمایش" in tx and db.get_user(TESTER)["days_pw"] == 4, "6-day preview does not change the programme")
+for sec in ("cardio", "food", "supp", "safe"):
+    m = mark(); press(TESTER, f"bt:sec:{sec}"); ok(len(texts_out(m)) > 100 and datas(m)[-1] == "bt:menu", f"section {sec} + back")
+m = mark(); press(TESTER, "bt:sec:food"); ok("ناهار" in texts_out(m) and "کالری پیشنهادی" in texts_out(m), "nutrition section: personal numbers + Iranian sample day")
+m = mark(); press(TESTER, "bt:ex:4"); exs = [d_ for d_ in datas(m) if d_.startswith("xv:")]
+ok(exs and all(d_[3:] in X.EX for d_ in exs), "tutorial buttons reuse the existing xv:<exercise> handler")
+m = mark(); press(TESTER, exs[0]); ok("آپارات" in texts_out(m), "tutorial opens from the body-type screen")
+# override -> the generated programme follows
+m = mark(); press(TESTER, "bt:cat"); ok({"bt:set:fat", "bt:set:lean", "bt:set:fit", "bt:set:auto"} <= set(datas(m)), "override picker")
+m = mark(); press(TESTER, "bt:set:fat"); ut = db.get_user(TESTER)
+ok(ut["body_cat"] == "fat" and "چاقی" in texts_out(m) and P.template_for(ut) is PDB.template("fat", 4, "m"), "override to چاقی changes the generated plan")
+ok(P.plan_label(ut).startswith("🔥 چاقی"), "plan label shows the category")
+m = mark(); say(TESTER, "/food"); ok("برای وضعیت «چاقی»" in texts_out(m), "nutrition screen shows the body-type target")
+m = mark(); press(TESTER, "bt:use:5"); ut = db.get_user(TESTER)
+ok(ut["days_pw"] == 5 and ut["plan_type"] == "d5" and len(P.train_days(ut)) == 5 and P.n_sessions(ut) == 5, "apply a 5-day bank programme")
+m = mark(); press(TESTER, "w:week"); ok(PDB.template("fat", 5, "m")[0][0] in texts_out(m), "week view built from the bank")
+press(TESTER, "bt:ds:5:1"); ok(db.get_user(TESTER)["train_days"] == ",".join(map(str, X.DAY_PRESETS[5][1][1])), "weekday preset for 5 days")
+m = mark(); say(TESTER, "/bodytype"); ok("چاقی" in texts_out(m), "/bodytype command")
+press(TESTER, "bt:set:auto"); press(TESTER, "st:d:4"); ut = db.get_user(TESTER)
+ok(ut["body_cat"] is None and ut["plan_type"] == "ul" and P.template_for(ut) is X.TEMPLATES["ul"], "back to automatic + 4 days -> original programme")
+
 # ============================================================ 8. transport: tokens never leak, platform adaptation
 print("== transport")
 alltext = json.dumps([d for _m, d in SENT], ensure_ascii=False)
@@ -492,6 +526,7 @@ if IS_BALE: ok(meths == ["setMyCommands"], "Bale profile: only setMyCommands (ot
 else: ok("setMyName" in meths and "setMyDescription" in meths and meths.count("setMyCommands") == 2, "Telegram profile: name, description, commands (default + fa)")
 cmds = json.loads([d for mm, d in SENT if mm == "setMyCommands"][0]["commands"])
 ok(any(c["command"] == "macros" for c in cmds), "/macros registered as a bot command")
+ok(any(c["command"] == "bodytype" for c in cmds), "/bodytype registered as a bot command")
 ok(any(c["command"] == "today" for c in cmds) and all(any("\u0600" <= ch <= "\u06ff" for ch in c["description"]) for c in cmds if c["command"] != "cancel" or True) , "commands described in Persian")
 
 # groups are ignored

@@ -198,5 +198,11 @@ def user_context(u):
     if u.get("age"): parts.append(f"سن={u['age']}")
     if u.get("weight"): parts.append(f"وزن={u['weight']}")
     if u.get("plan_type"): parts.append(f"برنامه={u['plan_type']}")
+    try:
+        import programs_db as PDB
+        c = PDB.category(u)
+        if c: parts.append(f"وضعیت بدنی={PDB.CAT_FA[c]}")
+    except Exception:
+        pass
     if u.get("injuries"): parts.append(f"آسیب={u['injuries']}")
     return "، ".join(parts)

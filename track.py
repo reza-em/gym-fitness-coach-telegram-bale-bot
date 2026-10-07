@@ -216,7 +216,7 @@ def export_zip(uid):
         z.writestr("water.csv", csv_text(["date", "ml"], [(r["day"], r["ml"]) for r in db.q("SELECT day,ml FROM water WHERE user_id=? ORDER BY id", (uid,))]))
         z.writestr("checkins.csv", csv_text(["date", "week", "kg", "fatigue", "pain", "adherence", "rate", "action", "kcal_change"],
                    [(r["day"], r["week"], r["kg"], r["fatigue"], r["pain"], r["adherence"], r["rate"], r["action"], r["kcal_change"]) for r in db.q("SELECT * FROM checkins WHERE user_id=? ORDER BY id", (uid,))]))
-        prof = {k: u[k] for k in ("sex", "age", "height", "weight", "start_w", "best_w", "goal_w", "target_w", "days_pw", "plan_type", "train_days", "sess_min", "injuries", "activity", "surplus", "protein_gk", "gainer_name", "gainer_g", "gainer_kcal", "gainer_prot", "gainer_n", "creatine_g", "start_date")}
+        prof = {k: u[k] for k in ("sex", "age", "height", "weight", "start_w", "best_w", "goal_w", "target_w", "days_pw", "plan_type", "train_days", "sess_min", "injuries", "activity", "surplus", "protein_gk", "gainer_name", "gainer_g", "gainer_kcal", "gainer_prot", "gainer_n", "creatine_g", "start_date", "body_cat")}
         z.writestr("profile.json", json.dumps(prof, ensure_ascii=False, indent=1))
     return buf.getvalue()
 

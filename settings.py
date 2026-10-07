@@ -8,7 +8,7 @@ def menu(uid, mid=None):
     u = ui.U(uid); db.set_await(uid, None)
     inj = "، ".join(X.INJURIES[k] for k in u["injuries"].split(",") if k) or "ندارد"
     txt = (f"⚙️ <b>تنظیمات</b>\n👤 {config.sx(u['sex'])['label']} | سن {u['age']} | قد {fnum(u['height'])} | وزن {fnum(u['weight'])}\n🎯 هدف ۲ ماهه {fnum(u['target_w'])} | بلندمدت {fnum(u['goal_w'])} | بهترین وزن {fnum(u['best_w'])}\n"
-           f"📋 {X.plan_name(u['plan_type'], u['sex'])} | {u['sess_min']} دقیقه | روزها: {'، '.join(util.WEEKDAYS[d] for d in sorted(P.train_days(u), key=util.WEEK_ORDER.index))}\n🩹 محدودیت‌ها: {inj}\n"
+           f"📋 {P.plan_label(u)} | {u['sess_min']} دقیقه | روزها: {'، '.join(util.WEEKDAYS[d] for d in sorted(P.train_days(u), key=util.WEEK_ORDER.index))}\n🩹 محدودیت‌ها: {inj}\n"
            f"🔥 مازاد کالری +{u['surplus']} | پروتئین {u['protein_gk']:g} g/kg\n🕒 منطقهٔ زمانی: {u['tz']}")
     return show(uid, mid, txt, kb([
         [btn("🎯 هدف‌ها", "st:goals"), btn("🧍 قد/سن/وزن", "st:body")],
@@ -55,9 +55,10 @@ def cb(uid, mid, p):
         return show(uid, mid, "جنسیت (برای فرمول کالری Mifflin-St Jeor، پروتئین، سرعت واقع‌بینانهٔ افزایش وزن و قالب برنامه):", kb([[btn("مرد", "st:sex:m"), btn("زن", "st:sex:f")], [btn("◀️", "st:menu")]]))
     if k == "sched":
         return show(uid, mid, "تغییر برنامه از «هفتهٔ جاری» اعمال می‌شود (تمرین‌های ثبت‌شده حفظ می‌شوند).",
-                    kb([[btn("۴ روز (بالاتنه/پایین‌تنه)", "st:d:4"), btn("۳ روز (تمام‌بدن)", "st:d:3")], [btn("۴۵ دقیقه", "st:m:45"), btn("۶۰", "st:m:60"), btn("۷۵", "st:m:75"), btn("۹۰", "st:m:90")], [btn("◀️", "st:menu")]]))
+                    kb([[btn("۴ روز (بالاتنه/پایین‌تنه)", "st:d:4"), btn("۳ روز (تمام‌بدن)", "st:d:3")], [btn("۲ روز", "st:d:2"), btn("۵ روز", "st:d:5"), btn("۶ روز", "st:d:6")], [btn("۴۵ دقیقه", "st:m:45"), btn("۶۰", "st:m:60"), btn("۷۵", "st:m:75"), btn("۹۰", "st:m:90")], [btn("◀️", "st:menu")]]))
     if k == "d":
-        n = int(p[2]); db.update_user(uid, days_pw=n, plan_type="ul" if n == 4 else "fb", train_days=",".join(map(str, X.DAY_PRESETS[n][0][1])))
+        n = int(p[2]) if p[2] in ("2", "3", "4", "5", "6") else 4
+        db.update_user(uid, days_pw=n, plan_type=X.plan_type_for_days(n), train_days=",".join(map(str, X.DAY_PRESETS[n][0][1])))
         return show(uid, mid, f"✅ برنامه {n} روزه شد؛ روزهای پیش‌فرض: {X.DAY_PRESETS[n][0][0]}. اگر خواستی روزها را عوض کنی:", kb([[btn(l, f"st:ds:{n}:{i}")] for i, (l, _d) in enumerate(X.DAY_PRESETS[n])] + [[btn("◀️", "st:menu")]]))
     if k == "ds":
         n, i = int(p[2]), int(p[3]); db.update_user(uid, train_days=",".join(map(str, X.DAY_PRESETS[n][i][1]))); return menu(uid, mid)

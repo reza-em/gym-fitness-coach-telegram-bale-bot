@@ -14,15 +14,20 @@ def targets_text(u):
              f"🍚 کربوهیدرات: {t['carbs']} g | 🥑 چربی: {t['fat']} g", f"💧 آب: حدود {t['water_ml']/1000:.1f} لیتر (روز تمرین نیم‌لیتر بیشتر)"]
     if u["gainer_on"] and u["gainer_kcal"]:
         lines.append(f"🥤 گینر ({int(u['gainer_n'])} بار در روز) ≈ {t['gainer_kcal']} kcal و {t['gainer_prot']} g پروتئین ← سهم غذای اصلی: {t['food_kcal']} kcal و {t['food_prot']} g پروتئین")
-    import macros
+    import macros, programs_db as PDB
     if macros.saved_line(u): lines.append(macros.saved_line(u))
+    cat = PDB.category(u, ui.current_weight(u["id"]))
+    if cat in ("fat", "fit"):
+        bn = PDB.numbers(u, cat, ui.current_weight(u["id"]))
+        if bn: lines.append(f"\n📂 <b>برای وضعیت «{PDB.CAT_FA[cat]}»</b> هدف پیشنهادی بانک برنامه‌ها: 🔥 {bn['kcal']} kcal | 🥩 پروتئین {bn['protein']} | 🥑 چربی {bn['fat']} | 🍚 کربوهیدرات {bn['carbs']} گرم "
+                            "(جزئیات در «📂 برنامه بر اساس وضعیت بدنی»).")
     lines.append("\n<i>فرمول Mifflin-St Jeor × سطح فعالیت؛ عددها تخمینی‌اند و هر هفته بر اساس روند وزنت خودکار تنظیم می‌شوند.</i>")
     return "\n".join(lines)
 
 def menu(uid, mid=None):
     u = ui.U(uid)
     return show(uid, mid, targets_text(u), kb([[btn("🍛 منوی پیشنهادی امروز", "n:day:0")], [btn("💊 گینر و کراتین", "s:menu"), btn("💧 آب", "wt:menu")],
-                                                 [btn("🔧 تغییر مازاد/پروتئین", "n:tune")], [btn("🧮 ماشین‌حساب کالری و ماکرو", "mc:start:n")], ui.menu_row()]))
+                                                 [btn("🔧 تغییر مازاد/پروتئین", "n:tune")], [btn("🧮 ماشین‌حساب کالری و ماکرو", "mc:start:n")], [btn("📂 برنامه بر اساس وضعیت بدنی", "bt:sec:food")], ui.menu_row()]))
 
 def day_text(u, k):
     t = N.targets(u, ui.current_weight(u["id"]))

@@ -51,7 +51,16 @@ def week_range(u, week):
 def train_days(u):
     return [int(x) for x in (u.get("train_days") or "").split(",") if x != ""]
 
-def n_sessions(u): return len(X.template(u["plan_type"], u.get("sex") or "m"))
+def template_for(u):
+    """Weekly session list: the 📂 body-type bank (programs_db) by category (چاقی/لاغری/تناسب), days per week and sex."""
+    import programs_db as PDB
+    return PDB.user_template(u)
+
+def plan_label(u):
+    import programs_db as PDB
+    return PDB.user_plan_name(u)
+
+def n_sessions(u): return len(template_for(u))
 
 def is_train_day(u, day=None):
     day = day or util.today(u["tz"]); return day.weekday() in train_days(u)
@@ -73,7 +82,7 @@ def item_scheme(u, ph, eid):
 
 def build_session(u, week, sidx):
     """-> dict(title, items=[{ex,sets,lo,hi,rir,note}], dropped=[...], notes=[...]). Injury-aware and fitted to the session length."""
-    sex = u.get("sex") or "m"; tmpl = X.template(u["plan_type"], sex)
+    tmpl = template_for(u)
     title, base = tmpl[sidx % len(tmpl)]
     ph = phase_for_user(u, week)
     injuries = {x for x in (u.get("injuries") or "").split(",") if x}

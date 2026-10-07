@@ -233,13 +233,24 @@ def template(plan_type, sex="m"):
     return (TEMPLATES_F if sex == "f" else TEMPLATES)[plan_type]
 
 PLAN_NAMES_F = {"ul": "۴ روز: پایین‌تنه/بالاتنه با تأکید باسن و پا", "fb": "تمام‌بدن (۳ روز) با تأکید باسن و پا"}
-def plan_name(plan_type, sex="m"): return (PLAN_NAMES_F if sex == "f" else PLAN_NAMES)[plan_type]
+def plan_name(plan_type, sex="m"):
+    names = PLAN_NAMES_F if sex == "f" else PLAN_NAMES
+    if plan_type in names: return names[plan_type]
+    n = plan_type[1:] if (plan_type or "")[:1] == "d" else "?"
+    return f"برنامهٔ {n} روزه (بانک برنامه‌ها)"
+
+def plan_type_for_days(n):
+    """users.plan_type for a days-per-week count: 4 -> 'ul', 3 -> 'fb' (classic templates), 2/5/6 -> 'd2'/'d5'/'d6' (programs_db bank)."""
+    n = int(n); return "ul" if n == 4 else "fb" if n == 3 else f"d{n}"
 
 PLAN_NAMES = {"ul": "بالاتنه/پایین‌تنه (۴ روز)", "fb": "تمام‌بدن (۳ روز)"}
 
 DAY_PRESETS = {      # python weekday: 0=Mon ... 5=Sat, 6=Sun
  4: [("شنبه، یکشنبه، سه‌شنبه، چهارشنبه", [5, 6, 1, 2]), ("شنبه، دوشنبه، چهارشنبه، جمعه", [5, 0, 2, 4])],
  3: [("شنبه، دوشنبه، چهارشنبه", [5, 0, 2]), ("یکشنبه، سه‌شنبه، پنجشنبه", [6, 1, 3])],
+ 2: [("شنبه، سه‌شنبه", [5, 1]), ("یکشنبه، چهارشنبه", [6, 2])],
+ 5: [("شنبه، یکشنبه، دوشنبه، چهارشنبه، پنجشنبه", [5, 6, 0, 2, 3]), ("شنبه، یکشنبه، سه‌شنبه، چهارشنبه، جمعه", [5, 6, 1, 2, 4])],
+ 6: [("شنبه تا پنجشنبه (جمعه استراحت)", [5, 6, 0, 1, 2, 3]), ("شنبه تا چهارشنبه + جمعه", [5, 6, 0, 1, 2, 4])],
 }
 
 def ex_name(eid): return EX[eid]["fa"] if eid in EX else eid

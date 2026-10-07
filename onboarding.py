@@ -81,8 +81,10 @@ def goto(uid, step, mid=None):
         return show(uid, mid, "هفته‌ای چند روز می‌تونی بدنسازی بری؟\n\n"
                     + ("• <b>۴ روز</b> (پیشنهاد من): پایین‌تنه/بالاتنه با تأکید بیشتر روی باسن و پا، هر عضله ۲ بار در هفته.\n" if fem else "• <b>۴ روز</b> (پیشنهاد من): بالاتنه/پایین‌تنه، هر عضله ۲ بار در هفته با جلسه‌های کوتاه‌تر.\n")
                     + ("• <b>۳ روز</b>: تمام‌بدن با تأکید باسن و پا، اگر برنامه‌ات شلوغه یا ریکاوری کندتره.\n" if fem else "• <b>۳ روز</b>: تمام‌بدن، اگر برنامه‌ات شلوغه یا ریکاوری کندتره.\n") +
+                    "• <b>۲، ۵ یا ۶ روز</b>: از بانک برنامه‌ها، متناسب با وضعیت بدنی‌ات (چاقی، لاغری یا تناسب).\n"
                     "اگر در ۲ هفتهٔ اول خیلی کوفته بودی، با ۳ روز شروع کن و بعد ۴ روز برو.",
-                    step_kb(uid, step, [[btn("۴ روز ⭐ پیشنهادی", "ob:days:4"), btn("۳ روز", "ob:days:3")]]))
+                    step_kb(uid, step, [[btn("۴ روز ⭐ پیشنهادی", "ob:days:4"), btn("۳ روز", "ob:days:3")],
+                                        [btn("۲ روز", "ob:days:2"), btn("۵ روز", "ob:days:5"), btn("۶ روز", "ob:days:6")]]))
     if step == "dayset":
         n = u["days_pw"]; rows = [[btn(lbl, f"ob:ds:{k}")] for k, (lbl, _d) in enumerate(X.DAY_PRESETS[n])]
         rows.append([btn("✏️ روزها را خودم انتخاب می‌کنم", "ob:dsc")])
@@ -135,7 +137,11 @@ def train_days_panel(uid, mid=None):
     return show(uid, mid, f"{n} روز را انتخاب کن:", kb(rows))
 
 def refw_list(uid):
-    u = ui.U(uid); return X.program_exercises(u["plan_type"], u["sex"])
+    u = ui.U(uid); seen = []
+    for _t, items in P.template_for(u):
+        for e, _p in items:
+            if e not in seen: seen.append(e)
+    return seen
 
 def refw_step(uid, mid=None):
     u = ui.U(uid); exs = refw_list(uid)
@@ -166,13 +172,19 @@ def finish(uid, mid=None):
     t = N.targets(u); pr = N.projection(u["weight"], u["target_w"], u["target_days"], u["sex"])
     wk = u["target_days"] // 7
     lines = [f"🎉 <b>برنامه‌ات آماده شد!</b> امروز روز اوله ({util.dlabel(util.today(u['tz']))})", "",
-             f"📋 برنامه: {X.plan_name(u['plan_type'], u['sex'])} — روزها: {'، '.join(util.WEEKDAYS[d] for d in sorted(P.train_days(u), key=util.WEEK_ORDER.index))} — {u['sess_min']} دقیقه",
+             f"📋 برنامه: {P.plan_label(u)} — روزها: {'، '.join(util.WEEKDAYS[d] for d in sorted(P.train_days(u), key=util.WEEK_ORDER.index))} — {u['sess_min']} دقیقه",
              f"🍽 کالری هدف: <b>{t['kcal']}</b> kcal | پروتئین {t['protein']} g | کربوهیدرات {t['carbs']} g | چربی {t['fat']} g",
              f"💧 آب: حدود {t['water_ml']/1000:.1f} لیتر در روز", ""]
+    import programs_db as PDB
+    bi = PDB.info(u)
+    if bi["cat"]:
+        lines.append(f"📂 وضعیت بدنی: {PDB.CAT_EMOJI[bi['cat']]} <b>{PDB.CAT_FA[bi['cat']]}</b> (BMI حدود {bi['bmi']:.1f}؛ {bi['reason']}). "
+                     "برنامهٔ تمرینت از بانک برنامه‌های همین وضعیت ساخته شد؛ کاردیو، تغذیه و نکته‌ها در «📂 برنامه بر اساس وضعیت بدنی».\n")
     lines.append(expectation_text(u, pr, wk))
     lines.append("\n" + texts.expect_note(u["sex"]))
     if u["kidney"]: lines.append("\n⚠️ چون مشکل/نگرانی کلیوی گفتی، کراتین را برایت فعال نکردم؛ قبل از مصرف حتماً با پزشک صحبت کن.")
-    return show(uid, mid, "\n".join(lines), kb([[btn("🏋️ تمرین امروز", "w:today")], [btn("🍽 برنامهٔ غذایی", "n:day"), btn("🏠 منو", "m:menu")]]))
+    return show(uid, mid, "\n".join(lines), kb([[btn("🏋️ تمرین امروز", "w:today")], [btn("📂 برنامه بر اساس وضعیت بدنی", "bt:menu")],
+                                                  [btn("🍽 برنامهٔ غذایی", "n:day"), btn("🏠 منو", "m:menu")]]))
 
 def expectation_text(u, pr, wk):
     cur, tgt = u["weight"], u["target_w"]
@@ -247,7 +259,8 @@ def callback(uid, mid, p):
         return nxt(uid, p[2], mid)
     if k == "brk": db.update_user(uid, break_months=int(p[2])); return nxt(uid, "brk", mid)
     if k == "days":
-        n = int(p[2]); db.update_user(uid, days_pw=n, plan_type="ul" if n == 4 else "fb", train_days=",".join(map(str, X.DAY_PRESETS[n][0][1])))
+        n = int(p[2]) if p[2] in ("2", "3", "4", "5", "6") else 4
+        db.update_user(uid, days_pw=n, plan_type=X.plan_type_for_days(n), train_days=",".join(map(str, X.DAY_PRESETS[n][0][1])))
         return nxt(uid, "days", mid)
     if k == "ds":
         u = ui.U(uid); db.update_user(uid, train_days=",".join(map(str, X.DAY_PRESETS[u["days_pw"]][int(p[2])][1]))); return nxt(uid, "dayset", mid)

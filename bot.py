@@ -12,13 +12,13 @@ if __name__ == "__main__" and not PLAT.token:
     print("%s is not set%s" % (PLAT.token_env, " - skipping the %s bot" % PLAT.label if IS_BALE else ""), file=sys.stderr)
     sys.exit(0 if IS_BALE else 1)
 
-import media as M, ui, onboarding as OB, workout as W, track as T, diet as D, remind as R, settings as S, admin as A, ai as AI, macros as MC
+import media as M, ui, onboarding as OB, workout as W, track as T, diet as D, remind as R, settings as S, admin as A, ai as AI, macros as MC, bodytype as BT
 
 COMMANDS = [("start", "شروع و ساخت برنامه 💪"), ("today", "تمرین امروز 🏋️"), ("week", "برنامهٔ هفته 📅"), ("weight", "ثبت وزن ⚖️"), ("measure", "ثبت اندازه‌ها 📏"),
-            ("checkin", "بررسی هفتگی ✅"), ("food", "تغذیه و کالری 🍽"), ("macros", "ماشین‌حساب کالری و ماکرو 🧮"), ("supplements", "گینر و کراتین 💊"), ("progress", "پیشرفت و نمودار 📊"), ("prs", "رکوردها 🏆"),
+            ("checkin", "بررسی هفتگی ✅"), ("food", "تغذیه و کالری 🍽"), ("macros", "ماشین‌حساب کالری و ماکرو 🧮"), ("bodytype", "برنامه بر اساس وضعیت بدنی 📂"), ("supplements", "گینر و کراتین 💊"), ("progress", "پیشرفت و نمودار 📊"), ("prs", "رکوردها 🏆"),
             ("reminders", "یادآورها ⏰"), ("settings", "تنظیمات ⚙️"), ("export", "خروجی داده‌ها 📦"), ("help", "راهنما ❓"), ("cancel", "لغو")]
 ABOUT_FA = "مربی بدنسازی شخصی: برنامهٔ هفتگی، ثبت وزنه، تغذیه ایرانی، گینر و کراتین، یادآور و نمودار پیشرفت"
-DESC_FA = ("من مربی بدنسازی‌ات هستم 💪 برنامهٔ تمرین شخصی (۳ یا ۴ روز)، ثبت وزنه‌ها و رکوردها، وزن و اندازه‌ها، کالری و منوی ایرانی، گینر و کراتین، یادآورها و نمودار پیشرفت. "
+DESC_FA = ("من مربی بدنسازی‌ات هستم 💪 برنامهٔ تمرین شخصی (۲ تا ۶ روز) بر اساس وضعیت بدنی (چاقی، لاغری، تناسب)، ثبت وزنه‌ها و رکوردها، وزن و اندازه‌ها، کالری و منوی ایرانی، گینر و کراتین، یادآورها و نمودار پیشرفت. "
            "توصیهٔ پزشکی نیست و دربارهٔ استروئید و مواد نیروزا کمکی نمی‌کنم.")
 
 def setup_profile():
@@ -172,6 +172,7 @@ def command(uid, cmd, arg, msg=None):
     if cmd == "checkin": return T.ci_start(uid)
     if cmd in ("food", "nutrition"): return D.menu(uid)
     if cmd in ("macros", "macro", "calc"): db.set_await(uid, None); return MC.command(uid, arg)
+    if cmd in ("bodytype", "body", "programs"): db.set_await(uid, None); return BT.command(uid)
     if cmd in ("supplements", "supp"): return D.supp_menu(uid)
     if cmd in ("progress", "chart"): return T.progress(uid)
     if cmd == "prs": return W.prs_view(uid)
@@ -199,6 +200,7 @@ def private_callback(cb):
     if k == "ci": return T.ci_cb(uid, mid, p)
     if k == "n": return D.nutri_cb(uid, mid, p)
     if k == "mc": return MC.cb(uid, mid, p)
+    if k == "bt": return BT.cb(uid, mid, p)
     if k == "s": return D.supp_cb(uid, mid, p)
     if k == "wt":
         if p[1] == "menu": return D.supp_menu(uid, mid)
