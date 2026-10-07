@@ -64,11 +64,13 @@ def close_all():
     _local.c = None
 
 def _migrate(cn):
-    """Idempotent upgrades. v2: users.sex ('m'/'f'); every existing user (e.g. Tester) becomes male."""
+    """Idempotent upgrades. v3: users.macro_target. v2: users.sex ('m'/'f'); every existing user (e.g. Tester) becomes male."""
     cols = {r[1] for r in cn.execute("PRAGMA table_info(users)").fetchall()}
     if "sex" not in cols:
         cn.execute("ALTER TABLE users ADD COLUMN sex TEXT NOT NULL DEFAULT 'm'")
     cn.execute("UPDATE users SET sex='m' WHERE sex IS NULL OR sex NOT IN ('m','f')")
+    if "macro_target" not in cols:      # v3: pinned target weight from the 🧮 calories & macros calculator (macros.py)
+        cn.execute("ALTER TABLE users ADD COLUMN macro_target REAL")
 
 def conn():
     c = getattr(_local, "c", None)

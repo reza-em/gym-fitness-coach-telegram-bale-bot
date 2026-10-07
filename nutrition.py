@@ -139,7 +139,55 @@ def day_plan(food_kcal, seed=0):
 
 def gainer_text(u):
     n = int(u.get("gainer_n") or 1)
-    return (f"{u.get('gainer_name') or 'گینر'}: هر سروینگ {util.fnum(u.get('gainer_g'))} گرم ≈ {util.fnum(u.get('gainer_kcal'))} کیلوکالری"
-            + (f" و {util.fnum(u.get('gainer_prot'))} گرم پروتئین" if u.get("gainer_prot") else "") + f"، روزی {n} سروینگ")
+    return (f"{u.get('gainer_name') or 'گینر'}: هر اسکوپ {util.fnum(u.get('gainer_g'))} گرم ≈ {util.fnum(u.get('gainer_kcal'))} کیلوکالری"
+            + (f" و {util.fnum(u.get('gainer_prot'))} گرم پروتئین" if u.get("gainer_prot") else "") + f"، روزی {n} بار")
 
 def creatine_ok(u): return not u.get("kidney")
+
+DISCLAIMER_SUPP = (
+ "⚠️ این‌ها پیشنهاد آموزشی‌اند، نه نسخهٔ پزشکی. اگر بیماری، بارداری، یا دارو داری قبل از هر مکمل با پزشک صحبت کن."
+)
+
+def recommend_supplements(u):
+    """Plain-Persian, optional supplement ideas based on profile/goal. Not medical advice."""
+    w = float(u.get("weight") or 0) or 70
+    tw = float(u.get("target_w") or u.get("goal_w") or w)
+    goal = "gain" if tw > w + 0.5 else ("lose" if tw < w - 0.5 else "recomp")
+    brk = int(u.get("break_months") or 0)
+    beginner = brk >= 3 or not u.get("onboarded")
+    kidney = bool(u.get("kidney"))
+    sex = u.get("sex") or "m"
+    lines = ["💊 <b>پیشنهاد مکمل (اختیاری)</b>", DISCLAIMER_SUPP, ""]
+
+    if goal == "gain":
+        lines.append("🎯 هدفت بیشتر <b>افزایش وزن/عضله</b> به نظر می‌رسه.")
+        lines.append("• <b>پروتئین غذایی</b> اولویته (مرغ، تخم‌مرغ، ماست، حبوبات). مکمل پروتئین فقط اگر غذا کم آوردی.")
+        if not kidney:
+            lines.append("• <b>کراتین مونوهیدرات</b> ۳–۵ گرم روزانه — ساده و مؤثر برای قدرت (اجباری نیست).")
+        else:
+            lines.append("• کراتین را به‌خاطر نگرانی کلیه پیشنهاد نمی‌کنم تا با پزشک چک کنی.")
+        lines.append("• <b>گینر</b> فقط اگر با غذا به کالری نمی‌رسی؛ یک اسکوپ بعد از تمرین کافی است، اجباری نیست.")
+        lines.append("• مولتی‌ویتامین ارزان‌قیمت فقط اگر رژیم یکنواخته — جادو نیست.")
+    elif goal == "lose":
+        lines.append("🎯 هدفت بیشتر <b>کاهش چربی</b> به نظر می‌رسه.")
+        lines.append("• اول کالری و پروتئین غذا را درست کن؛ مکمل چربی‌سوز لازم نیست و معمولاً تبلیغاتیه.")
+        if not kidney:
+            lines.append("• <b>کراتین</b> می‌تونی نگه داری (قدرت در کسری کالری بهتر می‌ماند)؛ آب کافی بنوش.")
+        lines.append("• گینر برای این هدف معمولاً مناسب نیست.")
+        lines.append("• کافئین قهوه/چای قبل تمرین اگر تحمل می‌کنی — اختیاری.")
+    else:
+        lines.append("🎯 وزنت نزدیک هدفه — تمرکز روی <b>فرم و قدرت</b>.")
+        if not kidney:
+            lines.append("• کراتین ۳–۵ گرم اختیاری.")
+        lines.append("• گینر لازم نیست مگر اشتها خیلی کم باشد.")
+
+    if beginner:
+        lines.append("")
+        lines.append("🌱 <b>مبتدی / برگشت بعد از استراحت:</b> عجله نکن. خواب، غذای کافی، و فرم حرکت مهم‌تر از هر مکملی است.")
+    lines.append("")
+    lines.append("🏠 <b>تمرین خانه / وزنه سبک:</b> همان کراتین و پروتئین غذایی کافی است؛ تجهیزات خاص مکمل نمی‌خواهد.")
+    if sex == "f":
+        lines.append("برای خانم‌ها دوز کراتین همان ۳–۵ گرم است؛ گینر را سبک‌تر بگیر اگر می‌خواهی.")
+    lines.append("")
+    lines.append("اگر خواستی از دکمه‌های همین منو گینر/کراتین را روشن یا خاموش کن — هیچ‌کدام اجباری نیست.")
+    return "\n".join(lines)

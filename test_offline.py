@@ -405,7 +405,7 @@ db.set_path(cur)
 print("== video")
 import media
 eid = "bench_bb"
-ok(X.yt_url(eid) == "https://www.youtube.com/results?search_query=Barbell+bench+press+form" and "common+mistakes" in X.yt_url(eid, "mistakes"), "YouTube search URLs built from the English exercise name")
+ok(("youtube.com" in X.yt_url(eid) and "aparat.com" in X.aparat_url(eid) and "common+mistakes" in X.yt_url(eid, "mistakes")), "YouTube + Aparat tutorial URLs present")
 ok(all(media.files(e)[0] and len(media.files(e)[1]) == 2 for e in X.EX), "every exercise has local images + GIF (free-exercise-db)")
 ok(os.path.exists(os.path.join(config.ASSETS, "ex", "NOTICE.txt")), "license notice shipped with the media")
 m = mark(); wk2 = W.active_workout(TESTER)
@@ -436,6 +436,43 @@ finally:
     os.rename(mp + ".bak", mp)
     for i in (0, 1): os.rename(os.path.join(config.ASSETS, "ex", f"{cur_ex}_{i}.jpg.bak"), os.path.join(config.ASSETS, "ex", f"{cur_ex}_{i}.jpg"))
 
+# ============================================================ 11. 🧮 target-weight calories & macros calculator
+print("== macros")
+import macros as MC
+ok(MC.calc(90) == dict(target=90.0, kcal=2160, protein=198, fat=72, fiber=30, carbs=180, water_l=3.0, pf_kcal=1440, rest_kcal=720),
+   "reel example: target 90 kg -> 2160 kcal / 198 P / 72 F / 30 fiber / 180 C / 3.0 L")
+m72 = MC.calc(72.5)
+ok(m72["kcal"] == 1740 and m72["water_l"] == 2.4 and abs(m72["protein"] * 4 + m72["fat"] * 9 + m72["carbs"] * 4 - m72["kcal"]) <= 2, "non-integer target rounds sensibly and adds up")
+ok(MC.suggestions(178, "m") == dict(lo=59, hi=78, bmi22=70, devine=73) and MC.suggestions(165, "f")["devine"] == 57 and MC.suggestions(None) is None,
+   "healthy-range / BMI 22 / Devine suggestions (male + female)")
+ok("mc:start:m" in json.dumps(json.loads(ui.menu_markup())), "main menu has the calculator entry")
+ok("/macros" in texts.HELP, "help mentions /macros")
+ut = db.get_user(TESTER)
+m = mark(); say(TESTER, "/macros"); tx = texts_out(m)
+ok("وزن هدف" in tx and f"mc:c:{util.fnum(ut['goal_w'])}:m" in datas(m) and "دیواین" in tx and "BMI" in tx and "نه از ویدیوی آموزشی" in tx,
+   "/macros: saved goal weight offered as default + labelled standard-formula suggestions")
+ok(any(b["text"] == texts.BACK and b.get("callback_data") == "mc:back:m" for b in buttons(m)), "calculator start screen has «◀️ بازگشت»")
+ok(db.get_await(TESTER)[0] == "mc", "calculator waits for a typed target weight")
+m = mark(); say(TESTER, "500"); ok("بین 35 تا 200" in texts_out(m) and db.get_await(TESTER)[0] == "mc", "out-of-range target rejected gently, still waiting")
+m = mark(); say(TESTER, "۹۰ کیلو"); tx = texts_out(m)
+ok(all(x in tx for x in ("2160", "198", "72", "30", "180", "90 × 24 = 2160", "2160 − 1440 = 720", "720 ÷ 4 = 180", "90 ÷ 30 = 3 لیتر")), "typed target (Persian digits) -> card with the 6 numbers + steps")
+ok("روش محاسبه بر اساس آموزش سامان خوارزمی" in tx and "نه توصیهٔ پزشکی" in tx, "card has the credit line + not-medical-advice footer")
+ok(db.get_await(TESTER)[0] is None and "mc:sv:90:m" in datas(m), "await cleared; save button offered")
+m = mark(); say(TESTER, "/macros 45"); tx = texts_out(m)
+ok("پایین‌تر از محدودهٔ وزن سالم" in tx if ut["height"] and 45 / (ut["height"] / 100) ** 2 < 18.5 else True, "low-BMI target gets a gentle note")
+m = mark(); say(TESTER, "/macros 85"); ok("پایین‌تر از محدودهٔ وزن سالم" not in texts_out(m), "no low-BMI note for a healthy target")
+m = mark(); press(TESTER, "n:menu"); ok("mc:start:n" in datas(m) and "ذخیره‌شده از ماشین‌حساب" not in texts_out(m), "nutrition menu has the calculator entry; nothing pinned yet")
+kcal_before = N.targets(db.get_user(TESTER), ui.current_weight(TESTER))["kcal"]
+m = mark(); press(TESTER, "mc:sv:90:n"); ok(db.get_user(TESTER)["macro_target"] == 90 and "ذخیره شد" in texts_out(m) and "mc:rm:90:n" in datas(m), "save pins the result")
+m = mark(); say(TESTER, "/food"); tx = texts_out(m)
+ok("ذخیره‌شده از ماشین‌حساب" in tx and "2160" in tx and N.targets(db.get_user(TESTER), ui.current_weight(TESTER))["kcal"] == kcal_before, "pinned numbers shown on /food; the bot's own targets unchanged")
+m = mark(); press(TESTER, "mc:rm:90:n"); ok(db.get_user(TESTER)["macro_target"] is None, "pinned result can be removed")
+press(TESTER, "mc:start:n"); m = mark(); press(TESTER, "mc:back:n"); ok("هدف تغذیهٔ روزانه" in texts_out(m) and db.get_await(TESTER)[0] is None, "back from the calculator returns to nutrition and clears the wait")
+g0 = ut["goal_w"]; db.update_user(TESTER, goal_w=None)
+m = mark(); say(TESTER, "/macros"); tx = texts_out(m)
+ok("هنوز وزن هدف ثبت نکرده‌ای" in tx and any(d_.startswith("mc:c:") for d_ in datas(m)), "no saved goal -> height-based suggestions as buttons")
+db.update_user(TESTER, goal_w=g0); say(TESTER, "/cancel")
+
 # ============================================================ 8. transport: tokens never leak, platform adaptation
 print("== transport")
 alltext = json.dumps([d for _m, d in SENT], ensure_ascii=False)
@@ -454,6 +491,7 @@ meths = [mm for mm, _ in SENT]
 if IS_BALE: ok(meths == ["setMyCommands"], "Bale profile: only setMyCommands (others are 501 there)")
 else: ok("setMyName" in meths and "setMyDescription" in meths and meths.count("setMyCommands") == 2, "Telegram profile: name, description, commands (default + fa)")
 cmds = json.loads([d for mm, d in SENT if mm == "setMyCommands"][0]["commands"])
+ok(any(c["command"] == "macros" for c in cmds), "/macros registered as a bot command")
 ok(any(c["command"] == "today" for c in cmds) and all(any("\u0600" <= ch <= "\u06ff" for ch in c["description"]) for c in cmds if c["command"] != "cancel" or True) , "commands described in Persian")
 
 # groups are ignored

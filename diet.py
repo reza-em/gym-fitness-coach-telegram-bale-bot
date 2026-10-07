@@ -13,14 +13,16 @@ def targets_text(u):
              f"🥩 پروتئین: <b>{t['protein']}</b> g ({u['protein_gk']:g} گرم به ازای هر کیلو؛ بازهٔ مناسب "+('۱٫۶–۲٫۰' if u['sex'] == 'f' else '۱٫۸–۲٫۲')+")",
              f"🍚 کربوهیدرات: {t['carbs']} g | 🥑 چربی: {t['fat']} g", f"💧 آب: حدود {t['water_ml']/1000:.1f} لیتر (روز تمرین نیم‌لیتر بیشتر)"]
     if u["gainer_on"] and u["gainer_kcal"]:
-        lines.append(f"🥤 گینر ({int(u['gainer_n'])} سروینگ) ≈ {t['gainer_kcal']} kcal و {t['gainer_prot']} g پروتئین ← سهم غذای اصلی: {t['food_kcal']} kcal و {t['food_prot']} g پروتئین")
+        lines.append(f"🥤 گینر ({int(u['gainer_n'])} بار در روز) ≈ {t['gainer_kcal']} kcal و {t['gainer_prot']} g پروتئین ← سهم غذای اصلی: {t['food_kcal']} kcal و {t['food_prot']} g پروتئین")
+    import macros
+    if macros.saved_line(u): lines.append(macros.saved_line(u))
     lines.append("\n<i>فرمول Mifflin-St Jeor × سطح فعالیت؛ عددها تخمینی‌اند و هر هفته بر اساس روند وزنت خودکار تنظیم می‌شوند.</i>")
     return "\n".join(lines)
 
 def menu(uid, mid=None):
     u = ui.U(uid)
     return show(uid, mid, targets_text(u), kb([[btn("🍛 منوی پیشنهادی امروز", "n:day:0")], [btn("💊 گینر و کراتین", "s:menu"), btn("💧 آب", "wt:menu")],
-                                                 [btn("🔧 تغییر مازاد/پروتئین", "n:tune")], ui.menu_row()]))
+                                                 [btn("🔧 تغییر مازاد/پروتئین", "n:tune")], [btn("🧮 ماشین‌حساب کالری و ماکرو", "mc:start:n")], ui.menu_row()]))
 
 def day_text(u, k):
     t = N.targets(u, ui.current_weight(u["id"]))
@@ -71,10 +73,10 @@ def water_today(u):
     return db.val("SELECT SUM(ml) FROM water WHERE user_id=? AND day=?", (u["id"], util.today(u["tz"]).isoformat()), 0) or 0
 
 def supp_menu(uid, mid=None):
-    u = ui.U(uid); ts = today_supp(u); lines = ["💊 <b>گینر و کراتین</b>", ""]
+    u = ui.U(uid); ts = today_supp(u); lines = ["💊 <b>مکمل‌ها</b>", ""]
     rows = []
     if u["gainer_on"] and u["gainer_kcal"]:
-        n = int(ts.get("gainer", (0, 0))[0]); lines.append(f"🥤 {N.gainer_text(u)}\n   امروز: {n}/{int(u['gainer_n'])} سروینگ " + ("✅" if n >= u['gainer_n'] else ""))
+        n = int(ts.get("gainer", (0, 0))[0]); lines.append(f"🥤 {N.gainer_text(u)}\n   امروز: {n}/{int(u['gainer_n'])} بار " + ("✅" if n >= u['gainer_n'] else ""))
         rows.append([btn("✅ گینر خوردم", "s:log:gainer"), btn("⚙️ تنظیم گینر", "s:gset")])
     else:
         lines.append("🥤 گینر: تنظیم نشده."); rows.append([btn("➕ تنظیم گینر", "s:gset")])
@@ -88,6 +90,7 @@ def supp_menu(uid, mid=None):
     w = water_today(u); tgt = N.targets(u)["water_ml"]
     lines.append(f"\n💧 آب امروز: {w} از {tgt} ml")
     rows.append([btn("💧 +250", "wt:250"), btn("💧 +500", "wt:500")])
+    rows.append([btn("💡 پیشنهاد مکمل برای من", "s:rec")])
     rows.append([btn("ℹ️ گینر", "s:info:g"), btn("ℹ️ کراتین", "s:info:c")]); rows.append(ui.menu_row())
     return show(uid, mid, "\n".join(lines), kb(rows))
 
@@ -108,6 +111,7 @@ def supp_cb(uid, mid, p):
     if k == "menu": db.set_await(uid, None); return supp_menu(uid, mid)
     if k == "log": return log_supp(uid, p[2], mid)
     if k == "info": return show(uid, mid, texts.GAINER_INFO if p[2] == "g" else texts.CREATINE_INFO, kb([[btn("◀️ مکمل‌ها", "s:menu")]]))
+    if k == "rec": return show(uid, mid, N.recommend_supplements(ui.U(uid)), kb([[btn("◀️ مکمل‌ها", "s:menu")]]))
     if k == "gset": return gainer_step(uid, "gainer_g", mid, ctx="st")
     if k == "gmilk": return supp_menu(uid, mid)
     if k == "cset":
@@ -123,14 +127,14 @@ def gainer_step(uid, step, mid=None, ctx="st"):
     if step == "gainer_g":
         db.update_user(uid, gainer_on=1)
         db.set_await(uid, "ob:gainer_g", {"ctx": ctx})
-        return show(uid, mid, "🥤 هر سروینگ (یک اسکوپ طبق برچسب) چند <b>گرم</b> است؟ (مثلاً 150) — اسم برند را هم اگر خواستی بعداً در همین پیام بنویس: <code>150 ماسل‌تک</code>")
+        return show(uid, mid, "🥤 روی برچسب قوطی، <b>هر بار مصرف</b> (یک اسکوپ) چند <b>گرم</b> است؟ مثلاً 150\nاگر خواستی اسم برند را هم بنویس: <code>150 ماسل‌تک</code>")
     if step == "gainer_kcal":
-        db.set_await(uid, "ob:gainer_kcal", {"ctx": ctx}); return show(uid, mid, "هر سروینگ چند <b>کیلوکالری</b> دارد؟ (روی برچسب «Energy/Calories»؛ مثلاً 570)")
+        db.set_await(uid, "ob:gainer_kcal", {"ctx": ctx}); return show(uid, mid, "همان یک اسکوپ چند <b>کیلوکالری</b> دارد؟ (روی برچسب Calories؛ مثلاً 570)")
     if step == "gainer_prot":
-        db.set_await(uid, "ob:gainer_prot", {"ctx": ctx}); return show(uid, mid, "هر سروینگ چند گرم <b>پروتئین</b> دارد؟ (مثلاً 25؛ اگر نمی‌دانی 0 بنویس)")
+        db.set_await(uid, "ob:gainer_prot", {"ctx": ctx}); return show(uid, mid, "همان یک اسکوپ چند گرم <b>پروتئین</b> دارد؟ (مثلاً 25؛ اگر نمی‌دانی 0 بنویس)")
     if step == "gainer_n":
-        return show(uid, mid, "روزی چند سروینگ؟ پیشنهاد: ۱ سروینگ بعد از تمرین (روز استراحت بین وعده‌ها).",
-                    kb([[btn("۱ سروینگ ⭐", f"ob:gnn:1"), btn("۲ سروینگ", f"ob:gnn:2")]]))
+        return show(uid, mid, "روزی چند بار گینر می‌خوری؟ پیشنهاد: ۱ بار بعد از تمرین.",
+                    kb([[btn("۱ بار در روز ⭐", f"ob:gnn:1"), btn("۲ بار در روز", f"ob:gnn:2")]]))
 
 def gainer_text(uid, step, text, d):
     ctx = (d or {}).get("ctx", "st")
@@ -151,5 +155,5 @@ def gainer_text(uid, step, text, d):
 def gainer_set_n(uid, mid, n, ctx):
     db.update_user(uid, gainer_n=n, gainer_on=1); db.set_await(uid, None)
     if ctx == "ob":
-        import onboarding; return onboarding.nxt(uid, "gainer_n", mid)
+        import onboarding; return onboarding.nxt(uid, "gainer_amt", mid)
     return supp_menu(uid, mid)

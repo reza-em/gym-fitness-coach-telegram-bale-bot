@@ -12,6 +12,7 @@ def menu_markup():
         [btn("🏋️ تمرین امروز", "w:today"), btn("📅 برنامهٔ هفته", "w:week")],
         [btn("⚖️ وزن و اندازه‌ها", "t:menu"), btn("🍽 تغذیه", "n:menu")],
         [btn("💊 گینر و کراتین", "s:menu"), btn("📊 پیشرفت", "p:menu")],
+        [btn("🧮 ماشین‌حساب کالری و ماکرو", "mc:start:m")],
         [btn("⏰ یادآورها", "r:menu"), btn("⚙️ تنظیمات", "st:menu")],
         [btn("❓ راهنما", "m:help")]])
 
@@ -33,6 +34,13 @@ def show_menu(uid, mid=None):
 
 def back_kb(extra=None, back="m:menu", label="🏠 منو"):
     rows = list(extra or []); rows.append([btn(label, back)]); return kb(rows)
+
+def with_back(rows, data, label=None):
+    """Append a single «بازگشت» row; returns the rows list (not a keyboard)."""
+    import texts
+    rows = [list(r) for r in (rows or [])]
+    rows.append([btn(label or texts.BACK, data)])
+    return rows
 
 def current_weight(uid):
     r = db.q1("SELECT kg FROM weights WHERE user_id=? ORDER BY day DESC, id DESC LIMIT 1", (uid,))
