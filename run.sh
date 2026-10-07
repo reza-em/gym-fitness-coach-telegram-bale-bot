@@ -6,6 +6,18 @@
 #   ./stop.sh [telegram|bale] stop
 cd "$(dirname "$0")"
 DIR="$(pwd)"
+# AI defaults (override with env)
+# Chat+vision: Cheaper Inference (Gemini). Classify: Jev AI.
+export FITNESS_OPENAI_BASE_URL="${FITNESS_OPENAI_BASE_URL:-https://api.cheaperinference.com/v1}"
+export FITNESS_AI_MODEL="${FITNESS_AI_MODEL:-gemini-3.8-flash}"
+export FITNESS_VISION_MODEL="${FITNESS_VISION_MODEL:-gemini-3.8-flash}"
+# Jev key: prefer JEV_AI_API_KEY; also accept FITNESS_OPENROUTER_API_KEY (legacy name for this key)
+if [ -z "${JEV_AI_API_KEY:-}" ] && [ -n "${FITNESS_OPENROUTER_API_KEY:-}" ]; then
+  export JEV_AI_API_KEY="$FITNESS_OPENROUTER_API_KEY"
+fi
+export JEV_AI_BASE_URL="${JEV_AI_BASE_URL:-https://jev-ai.pro/api}"
+export FITNESS_JEV_MODEL="${FITNESS_JEV_MODEL:-jev-latest}"
+
 PY="$DIR/venv/bin/python"; [ -x "$PY" ] || PY=python3
 
 if [ "$1" = "--loop" ]; then          # internal: supervisor loop for platform $2

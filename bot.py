@@ -12,10 +12,10 @@ if __name__ == "__main__" and not PLAT.token:
     print("%s is not set%s" % (PLAT.token_env, " - skipping the %s bot" % PLAT.label if IS_BALE else ""), file=sys.stderr)
     sys.exit(0 if IS_BALE else 1)
 
-import media as M, ui, onboarding as OB, workout as W, track as T, diet as D, remind as R, settings as S, admin as A
+import media as M, ui, onboarding as OB, workout as W, track as T, diet as D, remind as R, settings as S, admin as A, ai as AI, macros as MC
 
 COMMANDS = [("start", "شروع و ساخت برنامه 💪"), ("today", "تمرین امروز 🏋️"), ("week", "برنامهٔ هفته 📅"), ("weight", "ثبت وزن ⚖️"), ("measure", "ثبت اندازه‌ها 📏"),
-            ("checkin", "بررسی هفتگی ✅"), ("food", "تغذیه و کالری 🍽"), ("supplements", "گینر و کراتین 💊"), ("progress", "پیشرفت و نمودار 📊"), ("prs", "رکوردها 🏆"),
+            ("checkin", "بررسی هفتگی ✅"), ("food", "تغذیه و کالری 🍽"), ("macros", "ماشین‌حساب کالری و ماکرو 🧮"), ("supplements", "گینر و کراتین 💊"), ("progress", "پیشرفت و نمودار 📊"), ("prs", "رکوردها 🏆"),
             ("reminders", "یادآورها ⏰"), ("settings", "تنظیمات ⚙️"), ("export", "خروجی داده‌ها 📦"), ("help", "راهنما ❓"), ("cancel", "لغو")]
 ABOUT_FA = "مربی بدنسازی شخصی: برنامهٔ هفتگی، ثبت وزنه، تغذیه ایرانی، گینر و کراتین، یادآور و نمودار پیشرفت"
 DESC_FA = ("من مربی بدنسازی‌ات هستم 💪 برنامهٔ تمرین شخصی (۳ یا ۴ روز)، ثبت وزنه‌ها و رکوردها، وزن و اندازه‌ها، کالری و منوی ایرانی، گینر و کراتین، یادآورها و نمودار پیشرفت. "
@@ -43,6 +43,75 @@ def setup_profile():
     return ok
 
 # ---------------------------------------------------------------- messages
+
+def _largest_photo(photos):
+    """Telegram photo sizes array -> best file_id."""
+    if not photos: return None
+    return max(photos, key=lambda p: (p.get("file_size") or 0, p.get("width") or 0)).get("file_id")
+
+def download_file(file_id, max_bytes=4_000_000):
+    """Download bot file bytes via getFile. Returns bytes or None."""
+    try:
+        meta = call("getFile", {"file_id": file_id})
+        path = meta.get("file_path")
+        if not path: return None
+        # Telegram: https://api.telegram.org/file/bot<token>/<path>
+        # Bale: similar file base if supported
+        from plat import PLAT
+        base = getattr(PLAT, "file_base", None)
+        if not base:
+            # derive from api: .../botTOKEN/ -> .../file/botTOKEN/
+            api = PLAT.api
+            if api.endswith("/"):
+                base = api.replace("/bot", "/file/bot") if "/bot" in api else api
+            else:
+                base = api
+        url = base + path if base.endswith("/") or path.startswith("/") else (base + "/" + path)
+        # Prefer constructing standard Telegram file URL
+        import requests as _rq
+        token = PLAT.token
+        if "api.telegram.org" in PLAT.api or "telegram" in PLAT.api:
+            url = f"https://api.telegram.org/file/bot{token}/{path}"
+        elif "bale" in PLAT.api.lower():
+            # Bale file download often: {api_root}file/bot{token}/{path} or getFile file_path is full URL
+            if path.startswith("http"):
+                url = path
+            else:
+                root = PLAT.api.split("/bot")[0]
+                url = f"{root}/file/bot{token}/{path}"
+        r = _rq.get(url, timeout=60)
+        if r.status_code != 200: return None
+        data = r.content
+        if len(data) > max_bytes: return None
+        return data
+    except Exception as e:
+        log.warning("download_file: %s", C.safe(e)[:120]); return None
+
+def private_photo(msg):
+    """Optional photo analysis — only when user sends a photo (never forced in onboarding)."""
+    frm = msg["from"]; uid = frm["id"]
+    u, _new = db.touch_user(frm); A.sync_owner(uid)
+    if db.is_banned(uid): return send(uid, "دسترسی شما به این ربات بسته شده است.")
+    if not C.rate_ok(("p", uid), config.PRIVATE_MSGS_PER_MIN):
+        return
+    u = db.get_user(uid)
+    if not u["onboarded"]:
+        return send(uid, "اول ثبت‌نام را تمام کن (/start). تحلیل عکس اختیاری است و در مراحل اولیه لازم نیست.", kb([[btn("✅ ادامه ثبت‌نام", "ob:ack")]]) if not u["ack"] else None)
+    file_id = _largest_photo(msg.get("photo") or [])
+    if not file_id and msg.get("document"):
+        doc = msg["document"]
+        mime = (doc.get("mime_type") or "")
+        if mime.startswith("image/"): file_id = doc.get("file_id")
+    if not file_id:
+        return send(uid, "عکس واضح‌تری بفرست (یا از منو استفاده کن).", ui.menu_markup())
+    send(uid, "📸 دارم عکست را نگاه می‌کنم… (اختیاری؛ تشخیص پزشکی نیست)")
+    raw = download_file(file_id)
+    if not raw:
+        return send(uid, "نتونستم عکس را دانلود کنم. دوباره بفرست یا از منو استفاده کن.", ui.menu_markup())
+    cap = (msg.get("caption") or "").strip()
+    reply = AI.analyze_photo(uid, raw, cap, AI.user_context(u))
+    return send(uid, reply, ui.menu_markup())
+
 def is_steroid(text):
     t = text.lower()
     return any(re.search(r"(?<![a-z0-9])" + re.escape(w) + r"(?![a-z0-9])", t) if w.isascii() else w in t for w in texts.STEROID_WORDS)
@@ -70,10 +139,15 @@ def private_message(msg):
         elif aw in ("weigh", "meas"):
             if T.on_text(uid, aw, d, text) is not False: return
         elif aw == "rtime": return R.on_text(uid, aw, d, text)
+        elif aw == "mc":
+            if MC.on_text(uid, aw, d, text) is not False: return
         elif aw.startswith("a_") and db.is_admin(uid):
             if A.on_text(uid, aw, d, text) is not False: return
     if not u["onboarded"]: return OB.start(uid)
-    send(uid, "برای ادامه از منو استفاده کن 👇", ui.menu_markup())
+    # free-text coaching via optional AI
+    ctx = AI.user_context(u)
+    reply = AI.answer(uid, text, ctx)
+    return send(uid, reply, ui.menu_markup())
 
 def command(uid, cmd, arg, msg=None):
     u = db.get_user(uid)
@@ -97,6 +171,7 @@ def command(uid, cmd, arg, msg=None):
     if cmd in ("measure", "measures"): return T.meas_start(uid)
     if cmd == "checkin": return T.ci_start(uid)
     if cmd in ("food", "nutrition"): return D.menu(uid)
+    if cmd in ("macros", "macro", "calc"): db.set_await(uid, None); return MC.command(uid, arg)
     if cmd in ("supplements", "supp"): return D.supp_menu(uid)
     if cmd in ("progress", "chart"): return T.progress(uid)
     if cmd == "prs": return W.prs_view(uid)
@@ -123,6 +198,7 @@ def private_callback(cb):
     if k in ("t", "p"): return T.cb(uid, mid, p)
     if k == "ci": return T.ci_cb(uid, mid, p)
     if k == "n": return D.nutri_cb(uid, mid, p)
+    if k == "mc": return MC.cb(uid, mid, p)
     if k == "s": return D.supp_cb(uid, mid, p)
     if k == "wt":
         if p[1] == "menu": return D.supp_menu(uid, mid)
@@ -142,7 +218,10 @@ def handle_update(up):
         if not msg or not msg.get("chat"): return
         if msg["chat"].get("type", "private") != "private":
             return                      # groups are not supported: workouts and body data are private
-        if msg.get("from") and not msg["from"].get("is_bot"): private_message(msg)
+        if msg.get("from") and not msg["from"].get("is_bot"):
+            if msg.get("photo") or (msg.get("document") and str((msg.get("document") or {}).get("mime_type") or "").startswith("image/")):
+                return private_photo(msg)
+            private_message(msg)
     except Exception as e:
         log.exception("handler error: %s", C.safe(e))
         try:
