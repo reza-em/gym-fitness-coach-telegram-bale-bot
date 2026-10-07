@@ -5,14 +5,14 @@ import core as C, ui
 from core import btn, kb, send, show
 from util import esc, fnum, grid
 
-STEPS = ["sex", "age", "height", "weight", "best_w", "goal_w", "target_w", "brk", "days", "dayset", "sess", "inj", "act", "kid", "gainer", "gainer_g", "gainer_kcal", "gainer_prot", "gainer_n", "creatine", "refw", "remind", "done"]
-NUM = {   # field: (prompt, lo, hi, is_int, optional)
- "age": ("🎂 سنت چند سال است؟ (فقط عدد، برای محاسبهٔ کالری)", 14, 80, True, False),
- "height": ("📏 قدت چند سانتی‌متر است؟ (مثلاً 185)", 120, 230, False, False),
- "weight": ("⚖️ وزن فعلی‌ات چند کیلو است؟ (مثلاً 60 یا 60.5)", 30, 250, False, False),
- "best_w": ("🏆 وزنِ «بهترین حالت»ت قبل از استراحت چقدر بود؟ (کیلو)", 30, 250, False, True),
- "goal_w": ("🎯 هدف بلندمدت وزنت چند کیلو است؟", 30, 250, False, False),
- "target_w": ("⏳ تا ۲ ماه دیگر می‌خوای به چه وزنی برسی؟ (مثلاً همان وزن بهترین)", 30, 250, False, True),
+STEPS = ["sex", "age", "height", "weight", "goal_w", "brk", "days", "dayset", "sess", "inj", "act", "kid", "gainer", "gainer_amt", "creatine", "remind", "done"]
+NUM = {   # field: (prompt, lo, hi, is_int, optional) — best_w/target_w kept for settings edits
+ "age": ("🎂 سنت چند سال است؟ (فقط عدد)", 14, 80, True, False),
+ "height": ("📏 قدت چند سانتی‌متر است؟ (مثلاً 175)", 120, 230, False, False),
+ "weight": ("⚖️ وزن فعلی‌ات چند کیلو است؟ (مثلاً 70 یا 70.5)", 30, 250, False, False),
+ "best_w": ("🏆 بهترین وزنت قبل از استراحت چند کیلو بود؟ (اختیاری)", 30, 250, False, True),
+ "goal_w": ("🎯 دوست داری در بلندمدت به چه وزنی برسی؟ (کیلو)", 30, 250, False, False),
+ "target_w": ("⏳ تا حدود ۲ ماه دیگر چه وزنی را هدف می‌گیری؟", 30, 250, False, True),
 }
 
 def start(uid, mid=None):
@@ -25,13 +25,16 @@ def start(uid, mid=None):
 def resume_step(uid):
     u = ui.U(uid)
     if not u["age"]: return "sex" if u["awaiting"] is None else "age"
-    for f, step in (("height", "height"), ("weight", "weight"), ("goal_w", "best_w")):
+    for f, step in (("height", "height"), ("weight", "weight"), ("goal_w", "goal_w")):
         if not u[f]: return step
     return "brk" if u["break_months"] is None else "days"
 
 def skip_step(uid, step):
     u = ui.U(uid)
-    if step in ("gainer_g", "gainer_kcal", "gainer_prot", "gainer_n") and not u["gainer_on"]: return True
+    # legacy detailed gainer steps removed from flow; still skip if old await resumes
+    if step in ("gainer_g", "gainer_kcal", "gainer_prot", "gainer_n", "gainer_amt") and not u["gainer_on"]: return True
+    if step in ("gainer_g", "gainer_kcal", "gainer_prot", "gainer_n"): return True  # replaced by gainer_amt
+    if step == "refw": return True  # starting weights asked during first workout instead
     if step == "creatine" and u["kidney"]: return True
     return False
 
@@ -39,6 +42,20 @@ def nxt(uid, step, mid=None):
     i = STEPS.index(step) + 1
     while i < len(STEPS) and skip_step(uid, STEPS[i]): i += 1
     return goto(uid, STEPS[i], mid)
+
+def prev_step(uid, step):
+    """Previous non-skipped onboarding step, or None if at the first step."""
+    if step not in STEPS: return None
+    i = STEPS.index(step) - 1
+    while i >= 0 and skip_step(uid, STEPS[i]): i -= 1
+    return STEPS[i] if i >= 0 else None
+
+def step_kb(uid, step, rows=None):
+    """Keyboard for an onboarding step, with «بازگشت» except on the first step (sex) / done."""
+    rows = [list(r) for r in (rows or [])]
+    if step not in ("sex", "done") and prev_step(uid, step) is not None:
+        rows.append([btn(texts.BACK, f"ob:back:{step}")])
+    return kb(rows) if rows else None
 
 def goto(uid, step, mid=None):
     u = ui.U(uid)
@@ -49,44 +66,56 @@ def goto(uid, step, mid=None):
             rows.append([btn(f"همان {fnum(u['best_w'])} کیلو (بهترین وزنم)", f"ob:tw:{u['best_w']}")])
         if opt: rows.append([btn("ردکردن ⏭", f"ob:skip:{step}")])
         db.set_await(uid, "ob:" + step)
-        return show(uid, mid, prompt, kb(rows) if rows else None)
+        return show(uid, mid, prompt, step_kb(uid, step, rows))
+    # Button steps: clear stale numeric await so typed answers do not hit the previous field
+    db.set_await(uid, None)
     if step == "sex":
-        return show(uid, mid, "اول چند سؤال برای ساخت برنامهٔ مخصوص خودت 👇\n\nجنسیت (برای فرمول کالری):", kb([[btn("مرد", "ob:sex:m"), btn("زن", "ob:sex:f")]]))
+        return show(uid, mid, "اول چند سؤال برای ساخت برنامهٔ مخصوص خودت 👇\n\nجنسیت (برای فرمول کالری):",
+                    step_kb(uid, step, [[btn("مرد", "ob:sex:m"), btn("زن", "ob:sex:f")]]))
     if step == "brk":
-        return show(uid, mid, "چقدر از تمرین منظم دور بودی؟ (برای شدت شروع)", kb([[btn("کمتر از ۱ ماه", "ob:brk:0"), btn("۱–۳ ماه", "ob:brk:2")], [btn("۳–۶ ماه", "ob:brk:5"), btn("۶ ماه یا بیشتر", "ob:brk:6")]]))
+        return show(uid, mid, "چقدر از تمرین منظم دور بودی؟ (برای شدت شروع)",
+                    step_kb(uid, step, [[btn("کمتر از ۱ ماه", "ob:brk:0"), btn("۱–۳ ماه", "ob:brk:2")],
+                                        [btn("۳–۶ ماه", "ob:brk:5"), btn("۶ ماه یا بیشتر", "ob:brk:6")]]))
     if step == "days":
         fem = u["sex"] == "f"
         return show(uid, mid, "هفته‌ای چند روز می‌تونی بدنسازی بری؟\n\n"
                     + ("• <b>۴ روز</b> (پیشنهاد من): پایین‌تنه/بالاتنه با تأکید بیشتر روی باسن و پا، هر عضله ۲ بار در هفته.\n" if fem else "• <b>۴ روز</b> (پیشنهاد من): بالاتنه/پایین‌تنه، هر عضله ۲ بار در هفته با جلسه‌های کوتاه‌تر.\n")
                     + ("• <b>۳ روز</b>: تمام‌بدن با تأکید باسن و پا، اگر برنامه‌ات شلوغه یا ریکاوری کندتره.\n" if fem else "• <b>۳ روز</b>: تمام‌بدن، اگر برنامه‌ات شلوغه یا ریکاوری کندتره.\n") +
                     "اگر در ۲ هفتهٔ اول خیلی کوفته بودی، با ۳ روز شروع کن و بعد ۴ روز برو.",
-                    kb([[btn("۴ روز ⭐ پیشنهادی", "ob:days:4"), btn("۳ روز", "ob:days:3")]]))
+                    step_kb(uid, step, [[btn("۴ روز ⭐ پیشنهادی", "ob:days:4"), btn("۳ روز", "ob:days:3")]]))
     if step == "dayset":
         n = u["days_pw"]; rows = [[btn(lbl, f"ob:ds:{k}")] for k, (lbl, _d) in enumerate(X.DAY_PRESETS[n])]
         rows.append([btn("✏️ روزها را خودم انتخاب می‌کنم", "ob:dsc")])
-        return show(uid, mid, f"روزهای تمرینت؟ (انتخاب کن؛ بین جلسه‌ها استراحت بگذار)", kb(rows))
+        return show(uid, mid, f"روزهای تمرینت؟ (انتخاب کن؛ بین جلسه‌ها استراحت بگذار)", step_kb(uid, step, rows))
     if step == "sess":
         return show(uid, mid, "هر جلسه چند دقیقه وقت داری؟ (برنامه بر اساس این زمان کوتاه/بلند می‌شود)",
-                    kb([[btn("۴۵", "ob:sm:45"), btn("۶۰", "ob:sm:60"), btn("۷۵", "ob:sm:75"), btn("۹۰", "ob:sm:90")]]))
+                    step_kb(uid, step, [[btn("۴۵", "ob:sm:45"), btn("۶۰", "ob:sm:60"), btn("۷۵", "ob:sm:75"), btn("۹۰", "ob:sm:90")]]))
     if step == "inj":
         return injuries_panel(uid, mid)
     if step == "act":
-        return show(uid, mid, "سطح فعالیت روزمره‌ات (جدا از تمرین)؟", kb([[btn(v, f"ob:act:{k}")] for k, v in N.ACTIVITY.items()]))
+        return show(uid, mid, "روزمره‌ات چقدر تحرک داری؟ (جدا از باشگاه)",
+                    step_kb(uid, step, [[btn(v, f"ob:act:{k}")] for k, v in N.ACTIVITY.items()]))
     if step == "kid":
-        return show(uid, mid, "برای کراتین و پروتئین بالا: مشکل کلیوی داری یا دارویی مصرف می‌کنی که کلیه را درگیر می‌کند؟",
-                    kb([[btn("نه، ندارم", "ob:kid:0"), btn("بله / مطمئن نیستم", "ob:kid:1")]]))
+        return show(uid, mid, "مشکل کلیه داری یا دارویی می‌خوری که روی کلیه اثر بگذارد؟ (برای ایمنی کراتین)",
+                    step_kb(uid, step, [[btn("نه، ندارم", "ob:kid:0"), btn("بله / مطمئن نیستم", "ob:kid:1")]]))
     if step == "gainer":
-        return show(uid, mid, "💊 گینر (مس گینر) داری؟", kb([[btn("بله دارم", "ob:gn:1"), btn("نه", "ob:gn:0")]]))
+        return show(uid, mid, "💊 پودر گینر (افزایش وزن) می‌خوری؟\nجزئیات دقیق را بعداً از منوی مکمل‌ها می‌تونی تنظیم کنی.",
+                    step_kb(uid, step, [[btn("بله", "ob:gn:1"), btn("نه", "ob:gn:0")]]))
+    if step == "gainer_amt":
+        return show(uid, mid, "در هر وعدهٔ گینر تقریباً چقدر می‌خوری؟\n(بر اساس برچسب قوطی؛ بعداً قابل تغییر است)",
+                    step_kb(uid, step, [[btn("کم (~۳۰۰ کالری)", "ob:ga:300"), btn("معمولی (~۵۰۰ کالری) ⭐", "ob:ga:500")],
+                                        [btn("زیاد (~۷۰۰ کالری)", "ob:ga:700"), btn("بعداً تنظیم می‌کنم", "ob:ga:0")]]))
     if step in ("gainer_g", "gainer_kcal", "gainer_prot", "gainer_n"):
-        import diet; return diet.gainer_step(uid, step, mid, ctx="ob")
+        # legacy: jump to simple amount or next
+        return goto(uid, "gainer_amt", mid) if ui.U(uid)["gainer_on"] else nxt(uid, "gainer", mid)
     if step == "creatine":
-        return show(uid, mid, "کراتین هم داری؟ روزانه چند گرم مصرف کنی؟ (دوز استاندارد ۳–۵ گرم، بدون لودینگ)",
-                    kb([[btn("۳ گرم", "ob:cr:3"), btn("۴ گرم", "ob:cr:4"), btn("۵ گرم ⭐", "ob:cr:5")], [btn("ندارم / نمی‌خوام", "ob:cr:0")]]))
+        return show(uid, mid, "کراتین می‌خوای مصرف کنی؟\nمقدار معمول روزی ۳ تا ۵ گرم با آب است (نیازی به دورهٔ اول سنگین نیست).",
+                    step_kb(uid, step, [[btn("۳ گرم", "ob:cr:3"), btn("۵ گرم ⭐", "ob:cr:5")], [btn("نه / بعداً", "ob:cr:0")]]))
     if step == "refw":
-        return refw_step(uid, mid)
+        return nxt(uid, "refw", mid)  # skipped — weights set in first workout
     if step == "remind":
-        return show(uid, mid, "⏰ یادآورها (تمرین، کراتین، گینر، آب، خواب، وزن‌کشی هفتگی) را با زمان‌های پیش‌فرض فعال کنم؟ بعداً در منوی یادآورها می‌تونی همه‌چیز را تغییر بدی.",
-                    kb([[btn("✅ فعال کن", "ob:rem:1"), btn("بعداً", "ob:rem:0")]]))
+        return show(uid, mid, "⏰ یادآور تمرین و مکمل‌ها را روشن کنم؟ بعداً از منو قابل تغییر است.",
+                    step_kb(uid, step, [[btn("✅ فعال کن", "ob:rem:1"), btn("بعداً", "ob:rem:0")]]))
     if step == "done":
         return finish(uid, mid)
 
@@ -94,12 +123,15 @@ def injuries_panel(uid, mid=None):
     u = ui.U(uid); cur = {x for x in u["injuries"].split(",") if x}
     rows = [[btn(("✅ " if k in cur else "▫️ ") + v, f"ob:inj:{k}")] for k, v in X.INJURIES.items()]
     rows.append([btn("هیچ‌کدام / تأیید ✔️", "ob:injok")])
-    return show(uid, mid, "🩹 درد یا آسیب فعلی/قبلی داری؟ (چندتا را می‌شود انتخاب کرد؛ تمرین‌های ناجور حذف یا جایگزین می‌شوند)", kb(rows))
+    return show(uid, mid, "🩹 درد یا آسیب فعلی/قبلی داری؟ (چندتا را می‌شود انتخاب کرد؛ تمرین‌های ناجور حذف یا جایگزین می‌شوند)",
+                step_kb(uid, "inj", rows))
 
 def train_days_panel(uid, mid=None):
     u = ui.U(uid); cur = set(P.train_days(u)); n = u["days_pw"]
     rows = [[btn(("✅ " if d in cur else "▫️ ") + util.WEEKDAYS[d], f"ob:dt:{d}")] for d in util.WEEK_ORDER]
     rows.append([btn(f"تأیید ({len(cur)}/{n}) ✔️", "ob:dsok")])
+    # Sub-view of dayset: back returns to weekday presets (not previous STEPS entry)
+    rows.append([btn(texts.BACK, "ob:back:daypick")])
     return show(uid, mid, f"{n} روز را انتخاب کن:", kb(rows))
 
 def refw_list(uid):
@@ -178,6 +210,13 @@ def after_num(uid, step, back=None):
         import settings; return settings.after_edit(uid, step)
     if step == "weight":
         db.update_user(uid, start_w=ui.U(uid)["weight"])
+    if step == "goal_w":
+        u = ui.U(uid)
+        # auto target = goal; best_w defaults to current weight if unset (DB key preserved)
+        kw = {}
+        if not u["target_w"]: kw["target_w"] = u["goal_w"]
+        if not u["best_w"]: kw["best_w"] = u["weight"]
+        if kw: db.update_user(uid, **kw)
     if step == "best_w":
         u = ui.U(uid)
         if not u["target_w"]: db.update_user(uid, target_w=u["best_w"])
@@ -190,6 +229,15 @@ def callback(uid, mid, p):
     if k == "gnn":
         import diet; return diet.gainer_set_n(uid, mid, int(p[2]), "st" if ui.U(uid)["onboarded"] else "ob")
     if ui.U(uid)["onboarded"] and k not in ("ack",): return
+    if k == "back":
+        # ob:back:<current_step> — go to previous question without wiping later answers
+        cur = p[2] if len(p) > 2 else ""
+        if cur == "daypick":
+            return goto(uid, "dayset", mid)
+        if cur not in STEPS or cur == "sex":
+            return goto(uid, "sex", mid)
+        ps = prev_step(uid, cur)
+        return goto(uid, ps or "sex", mid)
     if k == "sex":
         import settings; settings.apply_sex(uid, p[2]); return nxt(uid, "sex", mid)
     if k == "tw": db.update_user(uid, target_w=float(p[2])); return nxt(uid, "target_w", mid)
@@ -224,6 +272,18 @@ def callback(uid, mid, p):
         db.update_user(uid, kidney=int(p[2]), creatine_on=0 if p[2] == "1" else ui.U(uid)["creatine_on"]); return nxt(uid, "kid", mid)
     if k == "gn":
         db.update_user(uid, gainer_on=int(p[2])); return nxt(uid, "gainer", mid)
+    if k == "ga":
+        # simple gainer amount presets (kcal per scoop/meal); maps old gainer_* keys
+        kcal = int(p[2])
+        if kcal <= 0:
+            db.update_user(uid, gainer_on=1, gainer_n=1)  # on but details later
+        else:
+            # rough defaults: ~g grams from kcal, protein ~10% of kcal/4
+            grams = {300: 80, 500: 120, 700: 160}.get(kcal, 120)
+            prot = {300: 15, 500: 25, 700: 35}.get(kcal, 25)
+            db.update_user(uid, gainer_on=1, gainer_kcal=kcal, gainer_g=grams, gainer_prot=prot, gainer_n=1,
+                           gainer_name=ui.U(uid).get("gainer_name") or "گینر")
+        return nxt(uid, "gainer_amt", mid)
     if k == "cr":
         g = int(p[2]); db.update_user(uid, creatine_on=1 if g else 0, creatine_g=g or 5); return nxt(uid, "creatine", mid)
     if k == "rw":
