@@ -6,6 +6,8 @@
 #   ./stop.sh [telegram|bale] stop
 cd "$(dirname "$0")"
 DIR="$(pwd)"
+# Optional local, git-ignored settings (e.g. OWNER_ID / OWNER_USERNAME). Never commit .env.
+if [ -f "$DIR/.env" ]; then set -a; . "$DIR/.env"; set +a; fi
 # AI defaults (override with env)
 # Chat+vision: Cheaper Inference (Gemini). Classify: Jev AI.
 export FITNESS_OPENAI_BASE_URL="${FITNESS_OPENAI_BASE_URL:-https://api.cheaperinference.com/v1}"

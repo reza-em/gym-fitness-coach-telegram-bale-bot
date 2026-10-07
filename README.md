@@ -17,7 +17,11 @@
 
 ## ✨ Highlights
 
-- 🏋️ **8-week program** with deload weeks; separate men / women programs, 3- or 4-day splits
+- 🏋️ **8-week program** with deload weeks; separate men / women programs, 2- to 6-day splits
+- 📂 **Body-type program bank** — fat loss (چاقی) / lean gain (لاغری) / fit-recomposition (تناسب), auto-detected from BMI + goal weight (user can override): 2–6 day templates for men and women, cardio, nutrition with an Iranian sample day, supplement and safety notes
+- 🧮 **Calories & macros calculator** (`/macros 90`) from a target weight, with step-by-step math and healthy-range suggestions
+- 🤖 Optional **AI coach** for free-text questions and photo feedback (OpenAI-compatible API; keys from env only, graceful fallback without a key)
+- ◀️ **Back button** on every onboarding step and sub-screen; 🎬 Aparat + YouTube tutorial links per exercise and a PDF of all exercises
 - 📝 **Set logging** (`60x8`), 1RM estimates, personal records and an automatic **next-weight suggestion**
 - 📈 Bodyweight and measurement **charts**, weekly volume, progress export (CSV/ZIP)
 - 🍽 Nutrition targets (calories / protein / macros), Iranian meal menu, gainer & creatine scheduling
@@ -120,6 +124,14 @@ Code released under the [MIT License](LICENSE).
 پایتون، `getUpdates` (long polling)، SQLite (WAL)، **یک پردازش برای هر پلتفرم** (تلگرام و بله با هستهٔ مشترک؛ داده‌ها جداست چون شناسهٔ کاربران در دو پیام‌رسان متفاوت است). رابط فقط فارسی.
 
 > ⚠️ **هشدار پزشکی:** این ربات جایگزین پزشک/متخصص تغذیه نیست. عددهای کالری، افزایش وزن و ۱RM تخمینی‌اند. دربارهٔ استروئید و داروهای نیروزا هیچ توصیه‌ای نمی‌کند (و پیام‌های مرتبط را رد می‌کند). مشکل کلیوی ← کراتین فعال نمی‌شود و پیام «با پزشک مشورت کن» نشان داده می‌شود.
+
+## تازه‌ها
+- **📂 برنامه بر اساس وضعیت بدنی** (`/bodytype` یا دکمهٔ منو): ربات از روی قد، وزن و وزن هدف وضعیتت را تشخیص می‌دهد — BMI کمتر از ۱۸٫۵ ← **لاغری**، ۱۸٫۵ تا ۲۴٫۹ ← **تناسب** (مگر هدفت حداقل ۳ کیلو کم‌کردن/اضافه‌کردن باشد)، ۲۵ و بیشتر ← **چاقی** — و می‌توانی با دکمه عوضش کنی. برای هر وضعیت: قالب تمرین ۲ تا ۶ روزه برای آقایان و خانم‌ها (حرکت‌ها از `exdata.py`، پس دکمه‌های آموزش کار می‌کنند)، کاردیو، کالری و ماکرو نسبت به نگهداری، منوی نمونه با غذاهای ایرانی، مکمل‌ها و نکات ایمنی. «تمرین امروز» و «برنامهٔ هفته» از همین بانک (`programs_db.py`) ساخته می‌شوند؛ برای وضعیت لاغری با ۳/۴ روز همان برنامهٔ قبلی است.
+- **🧮 ماشین‌حساب کالری و ماکرو** (`/macros`): همه‌چیز از روی وزن هدف، با محاسبهٔ مرحله‌به‌مرحله؛ ذخیرهٔ اختیاری روی صفحهٔ تغذیه.
+- **🤖 هوش مصنوعی (اختیاری):** جواب سؤال‌های متنی و بازخورد عکس؛ کلیدها فقط از متغیر محیطی (`FITNESS_OPENAI_API_KEY` و …) و بدون کلید، پیام راهنما.
+- **◀️ بازگشت** در همهٔ مراحل ثبت‌نام و زیرصفحه‌ها، لینک آموزش آپارات/یوتیوب برای هر حرکت و PDF آموزش حرکات (`gen_exercises_pdf.py`).
+- آزمون‌ها: `test_offline.py` (هر دو پلتفرم)، `test_macros.py`، `test_programs.py` (دسته‌بندی و وجود همهٔ حرکت‌ها).
+- تنظیمات محلی اختیاری (مثلاً `OWNER_ID`) را می‌توانید در فایل `.env` بگذارید که `run.sh` می‌خواند و در git نادیده گرفته می‌شود.
 
 ## اجرا
 ```bash
