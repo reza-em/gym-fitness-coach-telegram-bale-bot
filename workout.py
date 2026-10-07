@@ -111,7 +111,10 @@ def card(uid, mid, w, i, show_howto=None, w_override=None, prefix=""):
     if n == 0 and ex["kind"] == "c" and it.get("sug_w"):
         wu = P.warmup_sets(it["sug_w"], ex["inc"])
         if wu: lines.append("🔥 گرم‌کردن: " + "، ".join(f"{fnum(a)}×{b}" for a, b in wu) + " (استراحت کوتاه)")
-    if show_howto: lines.append(f"\n📝 {ex['how']}")
+    if show_howto:
+        lines.append(f"\n📝 {ex['how']}")
+        lines.append(f"🇮🇷 آپارات: {X.aparat_url(eid)}")
+        lines.append(f"▶️ یوتیوب: {X.yt_url(eid)}")
     if sets:
         lines.append("\n✅ ست‌های ثبت‌شده:")
         for s in sets: lines.append(f"   {s['setno']}) {fnum(s['w'])} کیلو × {s['reps']}")
@@ -226,7 +229,7 @@ def finish(uid, mid, w):
     if prs: lines += [""] + prs
     ts = __import__("diet").today_supp(ui.U(uid)); rows = []
     to_do = []
-    if u["gainer_on"] and u["gainer_kcal"] and ts.get("gainer", (0, 0))[0] < u["gainer_n"]: to_do.append("گینر (۱ سروینگ، تا یک ساعت بعد از تمرین)"); rows.append(btn("✅ گینر خوردم", "s:log:gainer"))
+    if u["gainer_on"] and u["gainer_kcal"] and ts.get("gainer", (0, 0))[0] < u["gainer_n"]: to_do.append("گینر (یک اسکوپ، تا یک ساعت بعد از تمرین)"); rows.append(btn("✅ گینر خوردم", "s:log:gainer"))
     if u["creatine_on"] and N.creatine_ok(u) and not ts.get("creatine"): to_do.append(f"کراتین {fnum(u['creatine_g'])} گرم با آب"); rows.append(btn("✅ کراتین خوردم", "s:log:creatine"))
     lines.append("\n🍽 بعد از تمرین: یک وعدهٔ پروتئین + کربوهیدرات بخور" + (" و " + " و ".join(to_do) if to_do else "") + ". امشب خواب ۷–۹ ساعت 😴")
     week = w["week"]; nx = next_session_idx(ui.U(uid), week)

@@ -1,5 +1,5 @@
-"""Exercise video / tutorial helper: YouTube search links (always) + free images/animation (free-exercise-db, Unlicense) when bundled locally.
-Telegram: looping GIF (sendAnimation); Bale: a 2-photo album (sendMediaGroup), falling back to single photos. Extra tips + common mistakes + 2nd search link."""
+"""Exercise video / tutorial helper: Aparat (FA) + YouTube (EN) links + free images/animation (free-exercise-db).
+Telegram: looping GIF (sendAnimation); Bale: a 2-photo album (sendMediaGroup), falling back to single photos."""
 import os
 import config, exdata as X
 import core as C, ui
@@ -15,7 +15,10 @@ def files(eid):
     return (g if os.path.exists(g) else None), [p for p in (a, b) if os.path.exists(p)]
 
 def video_markup(eid, more=True):
-    rows = [[btn("▶️ جستجوی ویدیو در یوتیوب", url=X.yt_url(eid, "form"))]]
+    rows = [
+        [btn("🇮🇷 آموزش آپارات", url=X.aparat_url(eid)), btn("▶️ یوتیوب", url=X.yt_url(eid, "form"))],
+        [btn("🔎 اشتباهات رایج (یوتیوب)", url=X.yt_url(eid, "mistakes"))],
+    ]
     if more: rows.append([btn("💡 نکات بیشتر و اشتباهات رایج", f"xm:{eid}")])
     rows.append([btn("🏠 منو", "m:menu")])
     return kb(rows)
@@ -34,7 +37,10 @@ def video(uid, eid):
         for i, p in enumerate(imgs):
             r = C.send_photo(uid, open(p, "rb").read(), cap if i == 0 else "")
             sent = sent or r
-    steps = f"🎬 <b>ویدیو / آموزش: {ex['fa']}</b>\n{esc(ex['how'])}\n\nبرای دیدن اجرای حرکت (ویدیو)، روی دکمه بزن یا لینک را باز کن:\n{X.yt_url(eid, 'form')}"
+    aparat = X.aparat_url(eid); yt = X.yt_url(eid, "form")
+    steps = (f"🎬 <b>ویدیو / آموزش: {ex['fa']}</b> ({ex['en']})\n"
+             f"عضله: {ex['grp']} | وسیله: {ex['eq']}\n{esc(ex['how'])}\n\n"
+             f"🇮🇷 آپارات: {aparat}\n▶️ یوتیوب: {yt}")
     if sent is None: steps += "\n\n(تصویر این حرکت در دسترس نیست؛ فقط لینک.)"
     return send(uid, steps, video_markup(eid))
 
@@ -42,6 +48,13 @@ def more(uid, mid, eid):
     if eid not in X.EX: return
     ex = X.EX[eid]; tips, mistakes = X.TIPS[eid]
     txt = (f"💡 <b>{ex['fa']}</b> — نکات بیشتر\n{tips}\n\n❌ <b>اشتباهات رایج:</b>\n{mistakes}\n\n"
-           f"🔗 جستجوی دوم (تکنیک و اشتباهات): {X.yt_url(eid, 'mistakes')}\n<i>اگر درد تیز یا ناراحتی مفصل داشتی، حرکت را قطع کن.</i>")
-    rows = [[btn("▶️ ویدیو (یوتیوب)", url=X.yt_url(eid, "form")), btn("🔎 اشتباهات رایج (یوتیوب)", url=X.yt_url(eid, "mistakes"))], [btn("🏠 منو", "m:menu")]]
+           f"🇮🇷 آپارات: {X.aparat_url(eid)}\n"
+           f"🔗 یوتیوب (فرم): {X.yt_url(eid, 'form')}\n"
+           f"🔗 یوتیوب (اشتباهات): {X.yt_url(eid, 'mistakes')}\n"
+           f"<i>اگر درد تیز یا ناراحتی مفصل داشتی، حرکت را قطع کن.</i>")
+    rows = [
+        [btn("🇮🇷 آپارات", url=X.aparat_url(eid)), btn("▶️ یوتیوب", url=X.yt_url(eid, "form"))],
+        [btn("🔎 اشتباهات رایج", url=X.yt_url(eid, "mistakes"))],
+        [btn("🏠 منو", "m:menu")],
+    ]
     return send(uid, txt, kb(rows))
