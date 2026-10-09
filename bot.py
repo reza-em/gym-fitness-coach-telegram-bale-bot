@@ -267,6 +267,9 @@ def single_instance():
     return fd
 
 def main():
+    if PLAT.name in os.environ.get("FITNESS_DISABLE_POLLING", "").replace(",", " ").split():
+        print("%s polling is disabled (FITNESS_DISABLE_POLLING): this bot runs as a webhook (Vercel). Not starting, webhook untouched." % PLAT.name, file=sys.stderr)
+        sys.exit(0)
     _lock = single_instance()
     C.setup_logging(); db.init()
     try:

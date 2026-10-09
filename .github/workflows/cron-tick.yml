@@ -28,6 +28,8 @@ jobs:
         env:
           VERCEL_URL: ${{ secrets.VERCEL_URL }}
           CRON_SECRET: ${{ secrets.CRON_SECRET }}
+          # platforms served by Vercel; repo variable TICK_PLATFORMS="telegram bale" once Bale moves too
+          TICK_PLATFORMS: ${{ vars.TICK_PLATFORMS || 'telegram' }}
         run: |
           if [ -z "$VERCEL_URL" ] || [ -z "$CRON_SECRET" ]; then
             echo "VERCEL_URL / CRON_SECRET repo secrets not set - skipping (serverless deployment not active)."
@@ -36,7 +38,7 @@ jobs:
           BASE="${VERCEL_URL%/}"
           case "$BASE" in http://*|https://*) ;; *) BASE="https://$BASE" ;; esac
           rc=0
-          for P in telegram bale; do
+          for P in $TICK_PLATFORMS; do
             code=$(curl -sS -o /tmp/tick_$P.json -w '%{http_code}' --max-time 150 --retry 2 --retry-delay 10 \
                    -X POST -H "Authorization: Bearer $CRON_SECRET" "$BASE/api/cron/tick?platform=$P" || echo 000)
             echo "$P -> HTTP $code $(head -c 300 /tmp/tick_$P.json 2>/dev/null)"

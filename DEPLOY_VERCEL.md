@@ -99,12 +99,12 @@ again with `--wipe` **after** stopping the polling bot (step 5).
 ### 5. Switchover (real bots) / جابه‌جایی ربات اصلی
 Order matters — the polling bot deletes any webhook when it (re)starts, and it would also send reminders twice.
 ترتیب مهم است: اول ربات قدیمی را کامل متوقف کنید.
-1. `./stop.sh` in `/workspace/fitness-bot` (stops both supervisors, so nothing restarts the polling bot).
+1. `./stop.sh telegram` (or `./stop.sh` for both) in `/workspace/fitness-bot`, and add `FITNESS_DISABLE_POLLING=telegram` (space-separated list, e.g. `telegram bale`) to its `.env` so `run.sh` / `bot.py` never start polling for that platform again (polling would delete the webhook).
 2. Fresh data copy with `--wipe` (step 3) for both platforms.
 3. Vercel env: replace the test tokens with the real `FITNESS_TELEGRAM_BOT_TOKEN` / `FITNESS_BALE_BOT_TOKEN`, redeploy.
 4. `python scripts/set_webhook.py set --platform telegram --url https://<project>.vercel.app` and the same with `--platform bale`
    (queued updates are kept and delivered to the webhook).
-5. GitHub secrets `VERCEL_URL` + `CRON_SECRET`; merge `serverless-vercel` into `main` (or run the workflow manually) so the 5-minute reminder tick runs.
+5. GitHub secrets `VERCEL_URL` + `CRON_SECRET`; merge `serverless-vercel` into `main` so the 5-minute reminder tick runs. The workflow ticks only `telegram` by default; set the repo variable `TICK_PLATFORMS="telegram bale"` when Bale moves too.
 6. Watch logs + `set_webhook.py info` for a day.
 
 ### 6. Rollback / بازگشت
@@ -112,7 +112,7 @@ Order matters — the polling bot deletes any webhook when it (re)starts, and it
 2. Delete the GitHub secret `VERCEL_URL` (the cron workflow then skips).
 3. Data written on Vercel since the switchover lives in Turso. To keep it, export it back before restarting polling, e.g.
    `turso db shell fitness-telegram .dump > tg.sql` → `sqlite3 fitness.db.new < tg.sql` (stop, swap files, keep a backup of the old file).
-4. `./run.sh` in `/workspace/fitness-bot`.
+4. Remove the platform from `FITNESS_DISABLE_POLLING` in `.env`, then `./run.sh telegram` in `/workspace/fitness-bot`.
 
 ## Local development / اجرای محلی
 ```bash
