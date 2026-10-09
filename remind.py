@@ -111,15 +111,24 @@ def compose(u, kind, ts=None):
         return ("⚖️ وقت وزن‌کشی و بررسی هفتگیه (صبح، ناشتا). بعد از وزن، چند سؤال کوتاه می‌پرسم و کالری را تنظیم می‌کنم.", kb([[btn("✅ بررسی هفتگی", "ci:start")]]))
     return None
 
-def tick(ts=None):
+def _claim(uid, key, day):
+    """Atomically mark (user, reminder key) done for `day`; False if another tick (overlapping cron call) already did."""
+    cur = db.ex("INSERT INTO rem_sent(user_id,key,day) VALUES(?,?,?) ON CONFLICT(user_id,key) DO UPDATE SET day=excluded.day WHERE rem_sent.day <> excluded.day",
+                (uid, key, day))
+    return (cur.rowcount or 0) > 0
+
+def tick(ts=None, deadline=None):
+    """Send due reminders once. `deadline` (time.time() value) stops early in serverless mode; the next tick continues
+    (everything not yet claimed is still due, up to REMIND_MAX_LATE_MIN late)."""
     sent = 0
     for u in db.q("SELECT * FROM users WHERE onboarded=1 AND banned=0 AND can_dm=1"):
+        if deadline and time.time() > deadline: break
         for r in db.q("SELECT * FROM reminders WHERE user_id=? AND enabled=1", (u["id"],)):
             for t in r["times"].split(","):
                 if not util.hhmm_ok(t): continue
                 key = f"{r['kind']}@{t}"; st = due(u["tz"], t, key, u["id"], ts)
                 if st is None: continue
-                db.ex("INSERT OR REPLACE INTO rem_sent(user_id,key,day) VALUES(?,?,?)", (u["id"], key, util.local_now(u["tz"], ts).date().isoformat()))
+                if not _claim(u["id"], key, util.local_now(u["tz"], ts).date().isoformat()): continue
                 if st != "send": continue
                 try: msg = compose(u, r["kind"], ts)
                 except Exception as e: log.warning("reminder %s: %s", r["kind"], type(e).__name__); continue
@@ -137,4 +146,5 @@ def loop(interval=30):
         time.sleep(interval)
 
 def start():
+    """Polling mode only: background scheduler thread. Serverless mode calls tick() from /api/cron/tick instead."""
     t = threading.Thread(target=loop, daemon=True, name="scheduler"); t.start(); return t

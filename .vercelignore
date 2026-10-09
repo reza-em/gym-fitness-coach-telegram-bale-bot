@@ -1,0 +1,13 @@
+# Not uploaded by `vercel deploy` (git deployments only contain tracked files anyway)
+.env
+.env.*
+venv/
+.venv/
+__pycache__/
+*.db
+*.db-wal
+*.db-shm
+*.log
+*.lock
+*.pid
+docs/

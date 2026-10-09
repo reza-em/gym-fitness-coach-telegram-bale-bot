@@ -1,16 +1,18 @@
 #!/usr/bin/env python3
-"""Fitness coach bot (مربی بدنسازی) — long polling, single instance per platform. Platform: FITNESS_PLATFORM=telegram|bale (see plat.py)."""
+"""Fitness coach bot (مربی بدنسازی).
+- Polling mode: `python bot.py` — long polling, single instance per platform. Platform: FITNESS_PLATFORM=telegram|bale (see plat.py).
+- Webhook/serverless mode: api/index.py calls process_update() inside `plat.use(<platform>)` (no threads, no getUpdates)."""
 import os, sys, json, time, logging, fcntl, hashlib, re
 import plat
-from plat import PLAT, IS_BALE
+from plat import PLAT
 import config, db, util, texts
 import core as C
 from core import call, send, ApiError, btn, kb, show
 
 log = logging.getLogger("bot")
 if __name__ == "__main__" and not PLAT.token:
-    print("%s is not set%s" % (PLAT.token_env, " - skipping the %s bot" % PLAT.label if IS_BALE else ""), file=sys.stderr)
-    sys.exit(0 if IS_BALE else 1)
+    print("%s is not set%s" % (PLAT.token_env, " - skipping the %s bot" % PLAT.label if PLAT.is_bale else ""), file=sys.stderr)
+    sys.exit(0 if PLAT.is_bale else 1)
 
 import media as M, ui, onboarding as OB, workout as W, track as T, diet as D, remind as R, settings as S, admin as A, ai as AI, macros as MC, bodytype as BT
 
@@ -28,7 +30,7 @@ def setup_profile():
     if db.meta_get("profile_sha") == sig: return True
     ok = True
     steps = [("setMyCommands", {"commands": cmds})]
-    if not IS_BALE:
+    if not PLAT.is_bale:
         steps += [("setMyCommands", {"commands": cmds, "language_code": "fa"}), ("setMyName", {"name": config.BOT_NAME}),
                   ("setMyName", {"name": config.BOT_NAME, "language_code": "fa"}),
                   ("setMyShortDescription", {"short_description": ABOUT_FA}), ("setMyShortDescription", {"short_description": ABOUT_FA, "language_code": "fa"}),
@@ -39,7 +41,7 @@ def setup_profile():
             ok = False; log.warning("%s failed: %s", m, C.safe(e)[:100])
     if ok:
         db.meta_set("profile_sha", sig)
-    log.info("profile set (ok=%s)%s", ok, " - Bale: name/about must be set in Bale's @botfather" if IS_BALE else "")
+    log.info("profile set (ok=%s)%s", ok, " - Bale: name/about must be set in Bale's @botfather" if PLAT.is_bale else "")
     return ok
 
 # ---------------------------------------------------------------- messages
@@ -232,6 +234,30 @@ def handle_update(up):
                 send(chat["id"], "یک خطای غیرمنتظره پیش آمد 😕 دوباره امتحان کن یا /start بزن.", html=False)
         except Exception: pass
 
+# ---------------------------------------------------------------- webhook / serverless mode
+_ready = set()
+
+def ensure_ready():
+    """Once per process and platform: schema/migrations (db.init) and, on Bale without an owner, log the claim code."""
+    name = PLAT.name
+    if name in _ready: return
+    db.init()
+    try: A.ensure_claim_code()
+    except Exception as e: log.warning("claim code: %s", C.safe(e)[:80])
+    _ready.add(name)
+
+def process_update(up):
+    """Handle one webhook update for the platform active in this context (plat.use). Synchronous; never raises.
+    Duplicate deliveries (same update_id) are ignored -> True if handled, False if it was a re-delivery."""
+    ensure_ready()
+    try:
+        if not db.claim_update(up.get("update_id")):
+            log.info("duplicate update %s ignored", up.get("update_id")); return False
+    except Exception as e:
+        log.warning("update dedupe failed (handling anyway): %s", C.safe(e)[:100])
+    handle_update(up)
+    return True
+
 def single_instance():
     fd = open(os.path.join(plat.BASE, PLAT.lock_name), "a+")
     try: fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
@@ -260,7 +286,7 @@ def main():
     while True:
         try:
             params = {"timeout": 30}
-            if not IS_BALE: params["allowed_updates"] = json.dumps(["message", "callback_query"])
+            if not PLAT.is_bale: params["allowed_updates"] = json.dumps(["message", "callback_query"])
             if offset: params["offset"] = offset
             updates = call("getUpdates", params, timeout=45)
         except ApiError as e:

@@ -2,18 +2,21 @@
 import os, sys, json, time, logging, threading, collections
 import requests
 import plat, balefmt, util
-from plat import PLAT, IS_BALE
+from plat import PLAT
 
-TOKEN = PLAT.token
+TOKEN = PLAT.token      # process-default platform's token (kept for compatibility; redaction uses all tokens)
 BOT_USERNAME = ""
 BOT_ID = 0
 log = logging.getLogger("bot")
+
+def _tokens():
+    return [t for t in set(plat.all_tokens() + [TOKEN, PLAT.token]) if t]
 
 class RedactFilter(logging.Filter):
     def filter(self, record):
         try: msg = record.getMessage()
         except Exception: return True
-        toks = plat.all_tokens() + ([TOKEN] if TOKEN else [])
+        toks = _tokens()
         if any(t in msg for t in toks):
             for t in toks: msg = msg.replace(t, "<TOKEN>")
             record.msg = msg; record.args = ()
@@ -27,7 +30,7 @@ def setup_logging():
 
 def safe(e):
     s = str(e)
-    for t in plat.all_tokens() + ([TOKEN] if TOKEN else []): s = s.replace(t, "<TOKEN>")
+    for t in _tokens(): s = s.replace(t, "<TOKEN>")
     return s
 
 sess = requests.Session()
@@ -73,7 +76,7 @@ def bale_prepare(method, data, files):
     return d, files
 
 def _call(method, data=None, files=None, timeout=60, _retry=True):
-    if IS_BALE:
+    if PLAT.is_bale:
         if method in BALE_NO_METHODS: raise ApiError("not supported on Bale: " + method)
         if method == "answerCallbackQuery" and str((data or {}).get("callback_query_id", "")).startswith("1"): return True
         data, files = bale_prepare(method, data, files)
@@ -189,6 +192,7 @@ def answer_cb(cid, text="", alert=False):
 _rl = collections.defaultdict(collections.deque); _rl_lock = threading.Lock()
 def rate_ok(key, limit, window=60.0, now=None):
     now = time.time() if now is None else now
+    key = (PLAT.name, key)          # one serverless process serves both platforms
     with _rl_lock:
         d = _rl[key]
         while d and d[0] <= now - window: d.popleft()
