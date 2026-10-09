@@ -31,7 +31,7 @@ Vercel → Project → Settings → Environment Variables (Production):
 | `CRON_SECRET` | yes | random; same value as the GitHub secret `CRON_SECRET` |
 | `TURSO_DATABASE_URL` / `TURSO_AUTH_TOKEN` | yes | Telegram database |
 | `TURSO_DATABASE_URL_BALE` / `TURSO_AUTH_TOKEN_BALE` | yes (Bale) | Bale database (token falls back to `TURSO_AUTH_TOKEN`, e.g. a group token) |
-| `OWNER_ID`, `OWNER_USERNAME` | recommended | Telegram owner numeric id (Bale owner uses `/claim`, code is printed in the Vercel logs) |
+| `OWNER_ID`, `OWNER_USERNAME` | recommended | Telegram owner numeric id (Bale owner uses `/claim`; on serverless the one-time code is only stored in the database, `meta.claim_code`) |
 | `FITNESS_OPENAI_API_KEY` (or `OPENAI_API_KEY`) | optional | AI answers / photo feedback |
 | `FITNESS_OPENROUTER_API_KEY` (or `JEV_AI_API_KEY`) | optional | topic classifier |
 | `FITNESS_OPENAI_BASE_URL`, `FITNESS_AI_MODEL`, `FITNESS_VISION_MODEL`, `JEV_AI_BASE_URL`, `FITNESS_JEV_MODEL` | optional | defaults are in `ai.py` |

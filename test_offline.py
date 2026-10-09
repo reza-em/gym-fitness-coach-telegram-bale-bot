@@ -110,17 +110,24 @@ ok(balefmt.to_md("<b>x</b>") == "*x*", "bale markdown conversion")
 # ============================================================ 2. owner / admin
 print("== owner")
 say(OTHER, "/start")
-m = mark(); say(OTHER, "/admin"); ok("فقط برای مالک" in texts_out(m), "non-owner cannot open /admin")
+m = mark(); say(OTHER, "/admin"); ok("فقط برای ادمین" in texts_out(m), "non-owner cannot open /admin")
 if not IS_BALE:
     say(OWNER, "/start"); m = mark(); say(OWNER, "/admin")
-    ok("پنل مالک" in texts_out(m), "Telegram owner id opens /admin")
+    ok("پنل ادمین" in texts_out(m), "Telegram owner id opens /admin")
 else:
+    class _Cap(logging.Handler):
+        def __init__(self): super().__init__(); self.out = []
+        def emit(self, r): self.out.append(r.getMessage())
+    cap = _Cap(); logging.getLogger("bot").addHandler(cap)
     code = A.ensure_claim_code()
+    logging.getLogger("bot").removeHandler(cap)
     ok(code and len(code) == 14, "Bale: claim code generated")
+    ok(not any(code in x for x in cap.out) and os.path.exists(A.claim_file()) and (os.stat(A.claim_file()).st_mode & 0o777) == 0o600 and code in open(A.claim_file()).read(),
+       "Bale: claim code is NOT logged; it is in an owner-only (0600) file")
     m = mark(); say(TESTER, "/claim 0000-0000-0000"); ok(not db.is_admin(TESTER), "wrong claim code refused")
     say(TESTER, "/claim " + code.lower()); ok(db.is_admin(TESTER) and any(me == "deleteMessage" for me, _ in SENT[m:]), "Bale: correct code binds owner and deletes the message")
-    ok(A.ensure_claim_code() is None, "claim code consumed")
-    m = mark(); say(TESTER, "/admin"); ok("پنل مالک" in texts_out(m), "Bale owner opens /admin")
+    ok(A.ensure_claim_code() is None and not os.path.exists(A.claim_file()) and db.is_owner(TESTER), "claim code consumed, file removed, claimer is owner")
+    m = mark(); say(TESTER, "/admin"); ok("پنل ادمین" in texts_out(m), "Bale owner opens /admin")
 
 # ============================================================ 3. onboarding (owner)
 print("== onboarding")
@@ -517,6 +524,113 @@ press(TESTER, "bt:ds:5:1"); ok(db.get_user(TESTER)["train_days"] == ",".join(map
 m = mark(); say(TESTER, "/bodytype"); ok("چاقی" in texts_out(m), "/bodytype command")
 press(TESTER, "bt:set:auto"); press(TESTER, "st:d:4"); ut = db.get_user(TESTER)
 ok(ut["body_cat"] is None and ut["plan_type"] == "ul" and P.template_for(ut) is X.TEMPLATES["ul"], "back to automatic + 4 days -> original programme")
+
+# ============================================================ 7b. admin panel
+print("== admin panel")
+C.rate_reset()
+ADM = TESTER
+ok(db.is_owner(ADM) and db.is_admin(ADM), "owner is super-admin")
+ok("ad:menu" in ui.menu_markup(ADM) and "ad:menu" not in ui.menu_markup(OTHER) and "ad:menu" not in ui.menu_markup(), "admin button in the main menu only for admins")
+m = mark(); say(ADM, "/start"); ok("ad:menu" in datas(m), "owner's main menu shows 🛠 پنل ادمین")
+# fake users: 20 (15 onboarded, 5 of them female), 3 joined today
+NOW = util.now()
+for i in range(20):
+    fid = 900001 + i
+    db.ex("INSERT OR REPLACE INTO users(id,username,name,created,last_seen,onboarded,sex,weight,height,goal_w,target_w,start_w) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)",
+          (fid, "fake%d" % i, "کاربر %d" % i, NOW - (0 if i < 3 else 30 * 86400), NOW - i * 60, 1 if i < 15 else 0, "f" if i < 5 else "m", 70, 175, 75 if i % 2 else 65, 72, 70))
+NU = db.val("SELECT COUNT(*) FROM users"); NEW1 = db.val("SELECT COUNT(*) FROM users WHERE created>=?", (A._ts_day_start(),))
+st = A.stats_text()
+ok(f"کل کاربران: <b>{NU}</b>" in st and f"جدید امروز: {NEW1}" in st and NEW1 >= 3, "stats: total + new today")
+NF = db.val("SELECT COUNT(*) FROM users WHERE onboarded=1 AND sex='f'"); NOB = db.val("SELECT COUNT(*) FROM users WHERE onboarded=1")
+ok(f"👩 زن: {NF}" in st and f"ثبت‌نام کامل: {NOB} از {NU}" in st and "وضعیت بدنی" in st and "هدف" in st, "stats: by sex, onboarding completion, goal, body type")
+m = mark(); press(ADM, "ad:st"); ok("آمار ربات" in texts_out(m), "📊 stats screen")
+# --- non-admins cannot use ANY admin callback or text input
+bc0 = db.val("SELECT COUNT(*) FROM broadcasts", (), 0); nfiles = len(FILES)
+db.set_await(OTHER, "a_bc2", {"text": "hack"})
+m = mark()
+for data_ in ("ad:menu", "ad:st", "ad:ul:0", "ad:u:%d:0" % ADM, "ad:sr", "ad:bc", "ad:bcgo", "ad:bcs", "ad:bcx", "ad:csv", "ad:am", "ad:aa",
+              "ad:pm:%d:0" % ADM, "ad:bl:%d:0" % ADM, "ad:bl:900001:0", "ad:rs2:%d:0" % ADM, "ad:aa2:%d:0" % OTHER, "ad:ar:%d:am" % ADM, "ad"):
+    press(OTHER, data_)
+outs = texts_out(m)
+ok("آمار ربات" not in outs and "کاربران —" not in outs and "پیام همگانی #" not in outs and "مدیریت ادمین" not in outs and all(A.NOT_ADMIN_TEXT in (d.get("text") or "") for mm, d in SENT[m:] if mm in ("sendMessage", "editMessageText")),
+   "non-admin: every admin callback answers 'admins only' and shows nothing")
+ok(not db.is_banned(ADM) and not db.is_banned(900001) and db.get_user(ADM)["onboarded"] == 1 and not db.is_admin(OTHER) and db.is_admin(ADM)
+   and db.val("SELECT COUNT(*) FROM broadcasts", (), 0) == bc0 and len(FILES) == nfiles, "non-admin: no side effects (block, reset, admins, broadcast, CSV)")
+for aw_ in ("a_sr", "a_pm", "a_add", "a_bc"):
+    db.set_await(OTHER, aw_, {"to": ADM}); m = mark(); say(OTHER, "900001")
+    ok("نتیجهٔ جستجو" not in texts_out(m) and "پیام از طرف ادمین" not in texts_out(m) and not db.is_admin(900001) and db.get_await(OTHER)[0] != aw_, f"non-admin: text input '{aw_}' ignored")
+# --- pagination (8 per page, sorted by last activity)
+pages = (NU + A.PAGE - 1) // A.PAGE
+m = mark(); press(ADM, "ad:ul:0"); dd = datas(m)
+ok(len([x for x in dd if x.startswith("ad:u:")]) == A.PAGE and "ad:ul:1" in dd and f"صفحهٔ 1 از {pages}" in texts_out(m), "users list: page 1 has 8 users + next")
+m = mark(); press(ADM, f"ad:ul:{pages - 1}"); dd = datas(m)
+ok(f"ad:ul:{pages - 2}" in dd and f"ad:ul:{pages}" not in dd and 1 <= len([x for x in dd if x.startswith("ad:u:")]) <= A.PAGE, "users list: last page has previous only")
+m = mark(); press(ADM, "ad:ul:999"); ok(f"صفحهٔ {pages} از {pages}" in texts_out(m), "users list: out-of-range page clamps")
+m = mark(); press(ADM, "ad:ul:0"); ids_p1 = [int(x.split(":")[2]) for x in datas(m) if x.startswith("ad:u:")]
+seen_ = [db.get_user(i)["last_seen"] for i in ids_p1]
+ok(seen_ == sorted(seen_, reverse=True) and "ad:menu" in datas(m), "users list sorted by last activity + back button")
+# --- user detail, block / unblock
+m = mark(); press(ADM, "ad:u:900002:0"); tx = texts_out(m); dd = datas(m)
+ok("900002" in tx and "کاربر 1" in tx and "عضویت" in tx and "آخرین فعالیت" in tx and all(x in dd for x in ("ad:pm:900002:0", "ad:bl:900002:0", "ad:rs:900002:0", "ad:ul:0")), "user detail: profile + actions + back to list")
+press(ADM, "ad:bl:900002:0"); ok(db.is_banned(900002), "block user")
+m = mark(); say(900002, "/start"); say(900002, "سلام"); tx = texts_out(m)
+ok(tx.count("دسترسی شما به این ربات") == 1 and "منوی اصلی" not in tx and "هشدار" not in tx, "blocked user: one polite message, then ignored")
+m = mark(); press(900002, "w:today"); ok(any(mm == "answerCallbackQuery" and "دسترسی" in d.get("text", "") for mm, d in SENT[m:]) and not any(mm in ("sendMessage", "editMessageText") for mm, _ in SENT[m:]), "blocked user: button press gets a polite alert only")
+press(ADM, "ad:ub:900002:0"); ok(not db.is_banned(900002), "unblock user")
+press(ADM, f"ad:bl:{ADM}:0"); ok(not db.is_banned(ADM), "owner cannot block himself")
+# --- reset onboarding
+m = mark(); press(ADM, "ad:rs:900003:0"); ok("ad:rs2:900003:0" in datas(m), "reset asks for confirmation")
+press(ADM, "ad:rs2:900003:0"); ok(db.get_user(900003)["onboarded"] == 0, "reset onboarding")
+# --- search
+press(ADM, "ad:sr"); m = mark(); say(ADM, "900005"); ok("ad:u:900005:s" in datas(m), "search by id")
+press(ADM, "ad:sr"); m = mark(); say(ADM, "@fake1"); dd = datas(m); ok("ad:u:900011:s" in dd and "ad:u:900012:s" in dd and "ad:u:900005:s" not in dd, "search by @username prefix")
+press(ADM, "ad:sr"); m = mark(); say(ADM, "کاربر 7"); ok("ad:u:900008:s" in datas(m), "search by name")
+press(ADM, "ad:sr"); m = mark(); say(ADM, "nobody-here"); ok("پیدا نشد" in texts_out(m), "search: nothing found")
+# --- private message
+press(ADM, "ad:pm:900004:0"); m = mark(); say(ADM, "سلام <b>دوست</b>")
+ok(any(mm == "sendMessage" and d.get("chat_id") == 900004 and "پیام از طرف ادمین" in d.get("text", "") and "&lt;b&gt;" in d.get("text", "") for mm, d in SENT[m:]) and "ارسال شد" in texts_out(m), "private message to a user (escaped)")
+# --- admins management (owner only)
+press(ADM, "ad:aa"); say(ADM, "900006"); ok(db.is_admin(900006) and not db.is_owner(900006), "owner adds an admin by numeric id")
+UPD[0] += 1
+fwd = msg_update(ADM, "a forwarded message"); fwd["message"]["forward_from"] = {"id": 900007, "first_name": "x", "is_bot": False}
+press(ADM, "ad:aa"); bot.handle_update(fwd); ok(db.is_admin(900007), "owner adds an admin by forwarding a message")
+m = mark(); say(900006, "/admin"); ok("پنل ادمین" in texts_out(m) and "ad:am" not in datas(m), "added admin opens the panel (without admins management)")
+press(900006, f"ad:bl:{ADM}:0"); ok(not db.is_banned(ADM), "an admin cannot block the owner")
+press(900006, "ad:bl:900007:0"); ok(not db.is_banned(900007), "an admin cannot block another admin")
+m = mark(); press(900006, "ad:am"); press(900006, "ad:ar:900007:am"); press(900006, "ad:aa2:900008:0")
+ok(db.is_admin(900007) and not db.is_admin(900008) and "فقط برای مالک" in texts_out(m), "only the owner manages admins")
+m = mark(); press(ADM, "ad:am"); tx = texts_out(m); ok("مالک (قابل حذف نیست)" in tx and "ad:ar:900006:am" in datas(m) and f"ad:ar:{ADM}:am" not in datas(m), "admins screen: owner fixed, others removable")
+press(ADM, f"ad:ar:{ADM}:am"); ok(db.is_admin(ADM) and db.is_owner(ADM), "owner cannot be removed")
+press(ADM, "ad:ar:900006:am"); press(ADM, "ad:ar:900007:0"); ok(not db.is_admin(900006) and not db.is_admin(900007), "owner removes admins")
+m = mark(); press(900006, "ad:menu"); ok(A.NOT_ADMIN_TEXT in texts_out(m), "removed admin loses access")
+# --- broadcast: confirm step + resumable batches
+C.rate_reset()
+config.BROADCAST_PER_SEC = 10000
+RCPT = [r["id"] for r in db.q("SELECT id FROM users WHERE onboarded=1 AND banned=0 AND can_dm=1 ORDER BY id")]
+press(ADM, "ad:bc"); m = mark(); say(ADM, "اطلاعیهٔ تست 📢"); ok("ad:bcgo" in datas(m) and f"به {len(RCPT)} کاربر" in texts_out(m), "broadcast: preview + confirm button")
+old_step = A.BC_STEP_S; A.BC_STEP_S = -1          # confirm sends nothing in this test, the batches below do the work
+m0 = mark(); press(ADM, "ad:bcgo"); A.BC_STEP_S = old_step
+bcr = db.q1("SELECT * FROM broadcasts ORDER BY id DESC LIMIT 1")
+ok(bcr["status"] == "run" and bcr["total"] == len(RCPT) and bcr["sent"] == 0 and "در حال ارسال" in texts_out(m0), "broadcast created (resumable, nothing sent yet)")
+m = mark(); press(ADM, "ad:bc"); ok("پیام همگانی #" in texts_out(m), "a second broadcast cannot start while one is running")
+n1 = A.broadcast_step(max_msgs=5); b1 = db.q1("SELECT * FROM broadcasts WHERE id=?", (bcr["id"],))
+ok(n1 == 5 and b1["sent"] == 5 and b1["cursor"] == RCPT[4] and b1["status"] == "run", "broadcast batch 1: 5 messages, cursor saved")
+A.broadcast_step(max_msgs=5); A.broadcast_step(deadline=__import__("time").time() - 1)
+b2 = db.q1("SELECT * FROM broadcasts WHERE id=?", (bcr["id"],)); ok(b2["sent"] == 10 and b2["status"] == "run", "broadcast batch 2 resumes; expired deadline sends nothing")
+A.broadcast_step(); b3 = db.q1("SELECT * FROM broadcasts WHERE id=?", (bcr["id"],))
+got = [d["chat_id"] for mm, d in SENT[m0:] if mm == "sendMessage" and "اطلاعیهٔ تست 📢" in (d.get("text") or "")]
+ok(b3["status"] == "done" and b3["sent"] == len(RCPT) and sorted(got) == RCPT, "broadcast finishes: every recipient exactly once")
+ok(any(mm == "sendMessage" and d.get("chat_id") == ADM and "ارسال همگانی تمام شد" in d.get("text", "") for mm, d in SENT[m0:]), "admin gets the final report")
+ok(A.broadcast_step() == 0, "nothing left to send")
+press(ADM, "ad:bc"); say(ADM, "دوم"); press(ADM, "ad:bcgo"); press(ADM, "ad:bcx")
+ok(db.val("SELECT status FROM broadcasts ORDER BY id DESC LIMIT 1") in ("stop", "done"), "broadcast can be stopped")
+# --- CSV export
+m = mark(); nf = len(FILES); press(ADM, "ad:csv")
+ok(len(FILES) == nf + 1 and FILES[-1][0] == "sendDocument", "CSV sent as a document")
+name_, content_, mime_ = FILES[-1][2]["document"]
+rows_ = list(csv.reader(io.StringIO(content_.decode("utf-8-sig"))))
+ok(name_.endswith(".csv") and rows_[0][:3] == ["id", "username", "name"] and len(rows_) - 1 == db.val("SELECT COUNT(*) FROM users") and any(r[0] == "900001" for r in rows_), "CSV: header + one row per user")
+db.ex("DELETE FROM users WHERE id>=900001 AND id<=900020"); C.rate_reset()
 
 # ============================================================ 8. transport: tokens never leak, platform adaptation
 print("== transport")

@@ -143,6 +143,10 @@ def loop(interval=30):
     while True:
         try: tick()
         except Exception as e: log.exception("scheduler: %s", C.safe(e))
+        try:
+            import admin
+            admin.broadcast_step(deadline=time.time() + 20)       # resumable broadcast (admin panel), a chunk per pass
+        except Exception as e: log.exception("broadcast: %s", C.safe(e))
         time.sleep(interval)
 
 def start():

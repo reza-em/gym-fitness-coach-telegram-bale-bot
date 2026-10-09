@@ -18,7 +18,7 @@ os.environ.setdefault("MPLCONFIGDIR", "/tmp/matplotlib")        # matplotlib nee
 from flask import Flask, request, jsonify                       # noqa: E402
 import plat, db                                                 # noqa: E402
 import core as C                                                # noqa: E402
-import bot, remind                                              # noqa: E402
+import bot, remind, admin                                       # noqa: E402
 
 C.setup_logging()
 log = logging.getLogger("bot")
@@ -88,11 +88,14 @@ def cron_tick():
             with plat.use(n):
                 bot.ensure_ready()
                 sent = remind.tick(deadline=deadline)
+                bc = 0
+                try: bc = admin.broadcast_step(deadline=deadline)    # resumable admin broadcast: next chunk
+                except Exception as e: log.warning("broadcast_step: %s", C.safe(e)[:120])
                 try: db.prune_updates()
                 except Exception as e: log.warning("prune_updates: %s", C.safe(e)[:80])
                 try: bot.setup_profile()                         # no-op unless commands/texts changed (sha in meta)
                 except Exception as e: log.warning("setup_profile: %s", C.safe(e)[:80])
-            out[n] = {"sent": sent}
+            out[n] = {"sent": sent, **({"broadcast": bc} if bc else {})}
         except Exception as e:
             log.exception("tick %s failed: %s", n, C.safe(e)[:200])
             out[n] = "error"

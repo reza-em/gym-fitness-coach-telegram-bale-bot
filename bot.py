@@ -93,7 +93,7 @@ def private_photo(msg):
     """Optional photo analysis — only when user sends a photo (never forced in onboarding)."""
     frm = msg["from"]; uid = frm["id"]
     u, _new = db.touch_user(frm); A.sync_owner(uid)
-    if db.is_banned(uid): return send(uid, "دسترسی شما به این ربات بسته شده است.")
+    if db.is_banned(uid): return blocked(uid)
     if not C.rate_ok(("p", uid), config.PRIVATE_MSGS_PER_MIN):
         return
     u = db.get_user(uid)
@@ -105,14 +105,19 @@ def private_photo(msg):
         mime = (doc.get("mime_type") or "")
         if mime.startswith("image/"): file_id = doc.get("file_id")
     if not file_id:
-        return send(uid, "عکس واضح‌تری بفرست (یا از منو استفاده کن).", ui.menu_markup())
+        return send(uid, "عکس واضح‌تری بفرست (یا از منو استفاده کن).", ui.menu_markup(uid))
     send(uid, "📸 دارم عکست را نگاه می‌کنم… (اختیاری؛ تشخیص پزشکی نیست)")
     raw = download_file(file_id)
     if not raw:
-        return send(uid, "نتونستم عکس را دانلود کنم. دوباره بفرست یا از منو استفاده کن.", ui.menu_markup())
+        return send(uid, "نتونستم عکس را دانلود کنم. دوباره بفرست یا از منو استفاده کن.", ui.menu_markup(uid))
     cap = (msg.get("caption") or "").strip()
     reply = AI.analyze_photo(uid, raw, cap, AI.user_context(u))
-    return send(uid, reply, ui.menu_markup())
+    return send(uid, reply, ui.menu_markup(uid))
+
+def blocked(uid, cb_id=None):
+    """Blocked users: a polite note (at most every 10 minutes), everything else is ignored."""
+    if cb_id: return C.answer_cb(cb_id, A.BLOCKED_TEXT, alert=True)
+    if C.rate_ok(("blk", uid), 1, 600): send(uid, A.BLOCKED_TEXT, html=False)
 
 def is_steroid(text):
     t = text.lower()
@@ -122,7 +127,7 @@ def private_message(msg):
     frm = msg["from"]; uid = frm["id"]; text = (msg.get("text") or "").strip()
     u, new = db.touch_user(frm)
     A.sync_owner(uid)
-    if db.is_banned(uid): return send(uid, "دسترسی شما به این ربات بسته شده است.")
+    if db.is_banned(uid): return blocked(uid)
     if not C.rate_ok(("p", uid), config.PRIVATE_MSGS_PER_MIN):
         if C.rate_ok(("pn", uid), 1, 30): send(uid, "کمی آهسته‌تر 🙂 چند ثانیه بعد دوباره بفرست.")
         return
@@ -143,13 +148,13 @@ def private_message(msg):
         elif aw == "rtime": return R.on_text(uid, aw, d, text)
         elif aw == "mc":
             if MC.on_text(uid, aw, d, text) is not False: return
-        elif aw.startswith("a_") and db.is_admin(uid):
-            if A.on_text(uid, aw, d, text) is not False: return
+        elif aw.startswith("a_"):
+            if A.on_text(uid, aw, d, text, msg) is not False: return
     if not u["onboarded"]: return OB.start(uid)
     # free-text coaching via optional AI
     ctx = AI.user_context(u)
     reply = AI.answer(uid, text, ctx)
-    return send(uid, reply, ui.menu_markup())
+    return send(uid, reply, ui.menu_markup(uid))
 
 def command(uid, cmd, arg, msg=None):
     u = db.get_user(uid)
@@ -161,8 +166,8 @@ def command(uid, cmd, arg, msg=None):
         return send(uid, {"ok": "✅ شما مالک این ربات شدید. /admin", "bad": "کد اشتباه است.", "throttled": "تلاش زیاد؛ بعداً دوباره."}[r])
     if cmd == "help": return send(uid, texts.HELP, kb([ui.menu_row()]))
     if cmd == "admin":
-        if not db.is_admin(uid): return send(uid, "این دستور فقط برای مالک است.")
-        return A.panel(uid)
+        if not db.is_admin(uid): return send(uid, A.NOT_ADMIN_TEXT)
+        db.set_await(uid, None); return A.panel(uid)
     if not u["onboarded"]: return OB.start(uid)
     if cmd in ("cancel", "menu"): db.set_await(uid, None); return ui.show_menu(uid)
     if cmd in ("today", "workout", "log"): db.set_await(uid, None); return W.today(uid)
@@ -181,16 +186,17 @@ def command(uid, cmd, arg, msg=None):
     if cmd in ("reminders", "remind"): return R.menu(uid)
     if cmd == "settings": return S.menu(uid)
     if cmd == "export": return T.export(uid)
-    send(uid, "دستور ناشناخته. از منو استفاده کن 👇", ui.menu_markup())
+    send(uid, "دستور ناشناخته. از منو استفاده کن 👇", ui.menu_markup(uid))
 
 def private_callback(cb):
     msg = cb["message"]; uid = cb["from"]["id"]; mid = msg["message_id"]; d = cb.get("data") or ""; p = d.split(":")
     db.touch_user(cb["from"]); A.sync_owner(uid)
-    if db.is_banned(uid): return C.answer_cb(cb["id"])
+    if db.is_banned(uid): return blocked(uid, cb["id"])
     C.answer_cb(cb["id"])
     if not C.rate_ok(("pc", uid), config.PRIVATE_MSGS_PER_MIN * 2): return
     k = p[0]; u = db.get_user(uid)
     if k == "ob": return OB.callback(uid, mid, p)
+    if k == "ad": return A.callback(uid, mid, p)          # admin panel works before the admin's own onboarding too
     if not u["onboarded"]: return OB.start(uid)
     if k == "m":
         if p[1] == "menu": return ui.show_menu(uid, mid)
@@ -210,7 +216,6 @@ def private_callback(cb):
         return D.water_add(uid, int(p[1]), mid) if p[1].isdigit() else D.supp_menu(uid, mid)
     if k == "r": return R.cb(uid, mid, p)
     if k == "st": return S.cb(uid, mid, p)
-    if k == "ad": return A.callback(uid, mid, p)
 
 def handle_update(up):
     try:

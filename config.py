@@ -4,7 +4,7 @@ from plat import PLAT, BASE
 
 BOT_NAME = "مربی بدنسازی | Fitness Coach"
 OWNER_USERNAME = os.environ.get("OWNER_USERNAME", "example_owner")
-OWNER_ID = int(os.environ.get("OWNER_ID", "0") or 0)            # Telegram numeric id. On Bale the owner binds with /claim <one-time code from bale.log>
+OWNER_ID = int(os.environ.get("OWNER_ID", "0") or 0)            # Telegram numeric id (super-admin). On Bale the owner binds with /claim <one-time code from owner_claim_code_bale.txt>
 DB_PATH = PLAT.db_path
 ASSETS = os.path.join(BASE, "assets")
 FONT_REG = os.path.join(ASSETS, "Vazirmatn-Regular.ttf")

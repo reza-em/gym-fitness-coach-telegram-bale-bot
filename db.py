@@ -61,6 +61,11 @@ CREATE TABLE IF NOT EXISTS checkins(
 );
 CREATE TABLE IF NOT EXISTS activity(day TEXT NOT NULL, user_id INTEGER NOT NULL, PRIMARY KEY(day, user_id));
 CREATE TABLE IF NOT EXISTS updates_seen(update_id INTEGER PRIMARY KEY, ts INTEGER NOT NULL);
+CREATE TABLE IF NOT EXISTS admins(user_id INTEGER PRIMARY KEY, added_by INTEGER, ts INTEGER);
+CREATE TABLE IF NOT EXISTS broadcasts(
+  id INTEGER PRIMARY KEY AUTOINCREMENT, admin_id INTEGER NOT NULL, text TEXT NOT NULL, created INTEGER, finished INTEGER,
+  status TEXT NOT NULL DEFAULT 'run', cursor INTEGER NOT NULL DEFAULT 0, sent INTEGER NOT NULL DEFAULT 0, failed INTEGER NOT NULL DEFAULT 0, total INTEGER NOT NULL DEFAULT 0
+);
 """
 
 def now(): return util.now()
@@ -168,7 +173,7 @@ class _LConn:
     def close(self): self.cn = None
 
 def _migrate(cn):
-    """Idempotent upgrades. v4: users.body_cat. v3: users.macro_target. v2: users.sex ('m'/'f'); every existing user (e.g. Tester) becomes male."""
+    """Idempotent upgrades. v5: index users(last_seen) + admins/broadcasts tables (SCHEMA). v4: users.body_cat. v3: users.macro_target. v2: users.sex ('m'/'f'); every existing user (e.g. Tester) becomes male."""
     cols = {r[1] for r in cn.execute("PRAGMA table_info(users)").fetchall()}
     if "sex" not in cols:
         cn.execute("ALTER TABLE users ADD COLUMN sex TEXT NOT NULL DEFAULT 'm'")
@@ -177,6 +182,8 @@ def _migrate(cn):
         cn.execute("ALTER TABLE users ADD COLUMN macro_target REAL")
     if "body_cat" not in cols:          # v4: 📂 body-type override 'fat'/'lean'/'fit' (NULL = automatic from BMI + goal, programs_db.py)
         cn.execute("ALTER TABLE users ADD COLUMN body_cat TEXT")
+    if "last_seen" in cols:             # v5: admin panel lists users by last activity
+        cn.execute("CREATE INDEX IF NOT EXISTS ix_users_seen ON users(last_seen)")
 
 def _ensure_schema(key, cn):
     if key in _schema_done: return
@@ -290,12 +297,27 @@ def get_await(uid):
     except Exception: d = {}
     return u["awaiting"], d
 
+def owner_id():
+    """The super-admin. Telegram: OWNER_ID (env). Bale: the user who redeemed the one-time /claim code (meta owner_id;
+    older databases: the first users.is_admin=1 row, which only /claim could set there)."""
+    P = plat.current()
+    if not P.claim: return config.OWNER_ID or None
+    o = meta_get("owner_id")
+    if o: return int(o)
+    return val("SELECT id FROM users WHERE is_admin=1 ORDER BY created, id LIMIT 1")
+
+def is_owner(uid): return bool(uid) and uid == owner_id()
+
 def is_admin(uid):
+    """Owner, or a row in `admins` (added by the owner), or users.is_admin (owner flag kept for older data)."""
+    if not uid: return False
+    if is_owner(uid): return True
     u = get_user(uid)
-    return bool(u and u["is_admin"]) or (uid == config.OWNER_ID and not __import__("plat").PLAT.claim)
+    if u and u["is_admin"]: return True
+    return val("SELECT 1 FROM admins WHERE user_id=?", (uid,)) is not None
 
 def is_banned(uid):
-    u = get_user(uid); return bool(u and u["banned"])
+    u = get_user(uid); return bool(u and u["banned"]) and not is_owner(uid)
 
 # ---- webhook idempotency (Telegram/Bale re-deliver an update when our response is slow or not 200) ----
 def claim_update(update_id):

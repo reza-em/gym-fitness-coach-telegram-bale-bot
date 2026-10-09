@@ -99,7 +99,7 @@ More options, admin panel and platform notes are in the sections below. Tokens a
 python3 -m venv venv && ./venv/bin/pip install -r requirements.txt
 export FITNESS_TELEGRAM_BOT_TOKEN=...   # optional, @BotFather
 export FITNESS_BALE_BOT_TOKEN=...       # optional, Bale @botfather
-export OWNER_ID=123456789               # Telegram owner id; on Bale use the one-time /claim code printed in the log
+export OWNER_ID=123456789               # Telegram owner id; on Bale use the one-time /claim code from owner_claim_code_bale.txt
 ./run.sh            # ./run.sh telegram | ./run.sh bale
 ./venv/bin/python test_offline.py
 ```
@@ -152,7 +152,7 @@ FITNESS_PLATFORM=bale ./venv/bin/python test_offline.py   # همان آزمون�
 | متغیر توکن | `FITNESS_TELEGRAM_BOT_TOKEN` | `FITNESS_BALE_BOT_TOKEN` |
 | API | api.telegram.org (HTML) | tapi.bale.ai (HTML ← Markdown خودکار) |
 | پروفایل | نام، توضیح، دستورهای فارسی خودکار | فقط `setMyCommands` خودکار؛ نام/توضیح را در `@botfather` بله بگذارید |
-| مالک `/admin` | شناسهٔ عددی `100000001` | کد یک‌بارمصرف: در `bale.log` عبارت `OWNER CLAIM CODE` را بخوانید و در بله `/claim <کد>` بفرستید (پیام حذف می‌شود) |
+| مالک `/admin` | شناسهٔ عددی `100000001` | کد یک‌بارمصرف در فایل `owner_claim_code_bale.txt` کنار دیتابیس (فقط مالک فایل می‌تواند بخواند؛ در لاگ نوشته نمی‌شود) — در بله `/claim <کد>` بفرستید (پیام حذف می‌شود) |
 
 نمودارها PNG ساده‌اند (matplotlib + فونت Vazirmatn داخل `assets/`)، پس روی هر دو پلتفرم یکسان کار می‌کنند. از قابلیت‌های مخصوص تلگرام (رنگ دکمه، inline mode، WebApp) استفاده نشده است. ربات فقط در چت خصوصی کار می‌کند.
 
@@ -197,3 +197,24 @@ FITNESS_PLATFORM=bale ./venv/bin/python test_offline.py   # همان آزمون�
 ## ☁️ Serverless (Vercel + Turso)
 The `serverless-vercel` branch can also run as a Vercel function (webhooks for Telegram and Bale, Turso/libSQL storage,
 reminders via a 5-minute GitHub Actions tick). Polling mode is unchanged. See [DEPLOY_VERCEL.md](DEPLOY_VERCEL.md).
+
+## 🛠 پنل ادمین | Admin panel
+
+`/admin` یا دکمهٔ «🛠 پنل ادمین» در منوی اصلی (فقط برای ادمین‌ها):
+- 📊 آمار: کل کاربران، جدید امروز/۷ روز، فعال امروز/۷ روز، جنسیت، هدف، وضعیت بدنی، درصد تکمیل ثبت‌نام
+- 👥 کاربران: فهرست صفحه‌بندی‌شده (آخرین فعالیت)، جزئیات کاربر (پروفایل، روند وزن، فعالیت) و کارها: پیام خصوصی، مسدود/رفع مسدودی، ریست ثبت‌نام
+- 🔎 جستجو با شناسه، @نام‌کاربری یا نام
+- 📢 پیام همگانی با تأیید؛ ارسال تکه‌تکه و قابل ادامه (هر تیک cron / دکمهٔ بروزرسانی یک بخش)، مناسب serverless
+- 👮 مدیریت ادمین‌ها (فقط مالک): افزودن با شناسه، @نام‌کاربری یا فوروارد پیام؛ مالک همیشه ادمین است و حذف نمی‌شود
+- 📥 خروجی CSV کاربران
+
+Owner: Telegram = `OWNER_ID`; Bale = whoever sends `/claim <code>` (code in `owner_claim_code_bale.txt`, mode 0600, next to the
+database; on serverless it is only in the database `meta.claim_code`). Other admins: table `admins`. Blocked users get one polite
+message (at most every 10 min) and are otherwise ignored.
+
+## ⏰ Reminder ticker on the box (fallback for GitHub Actions cron)
+
+GitHub's `schedule:` is best effort. With `FITNESS_TICK_URL` (e.g. `https://<app>.vercel.app/api/cron/tick?platform=telegram`) and
+`CRON_SECRET_FILE` (or `CRON_SECRET`) in `.env`, every `./run.sh` call keeps one flock-protected loop that POSTs the tick URL every
+`FITNESS_TICK_EVERY` seconds (default 300) and logs to `ticker.log` (`./run.sh ticker`, `./stop.sh ticker`). The secret is passed to
+curl via stdin, never on the command line. Double ticks are harmless (reminders are claimed once per user/day).

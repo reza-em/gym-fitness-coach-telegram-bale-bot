@@ -7,15 +7,17 @@ from util import esc
 
 def U(uid): return db.get_user(uid)
 
-def menu_markup():
-    return kb([
+def menu_markup(uid=None):
+    rows = [
         [btn("🏋️ تمرین امروز", "w:today"), btn("📅 برنامهٔ هفته", "w:week")],
         [btn("⚖️ وزن و اندازه‌ها", "t:menu"), btn("🍽 تغذیه", "n:menu")],
         [btn("💊 گینر و کراتین", "s:menu"), btn("📊 پیشرفت", "p:menu")],
         [btn("📂 برنامه بر اساس وضعیت بدنی", "bt:menu")],
         [btn("🧮 ماشین‌حساب کالری و ماکرو", "mc:start:m")],
         [btn("⏰ یادآورها", "r:menu"), btn("⚙️ تنظیمات", "st:menu")],
-        [btn("❓ راهنما", "m:help")]])
+        [btn("❓ راهنما", "m:help")]]
+    if uid and db.is_admin(uid): rows.append([btn("🛠 پنل ادمین", "ad:menu")])
+    return kb(rows)
 
 def menu_row(): return [btn("🏠 منو", "m:menu")]
 
@@ -31,7 +33,7 @@ def show_menu(uid, mid=None):
     if not u or not u["onboarded"]:
         import onboarding; return onboarding.start(uid)
     db.set_await(uid, None)
-    return show(uid, mid, home_text(u), menu_markup())
+    return show(uid, mid, home_text(u), menu_markup(uid))
 
 def back_kb(extra=None, back="m:menu", label="🏠 منو"):
     rows = list(extra or []); rows.append([btn(label, back)]); return kb(rows)
