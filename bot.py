@@ -206,7 +206,8 @@ def private_callback(cb):
     if k == "s": return D.supp_cb(uid, mid, p)
     if k == "wt":
         if p[1] == "menu": return D.supp_menu(uid, mid)
-        return D.water_add(uid, int(p[1]), mid)
+        if p[1] == "undo": return D.water_undo(uid, mid)
+        return D.water_add(uid, int(p[1]), mid) if p[1].isdigit() else D.supp_menu(uid, mid)
     if k == "r": return R.cb(uid, mid, p)
     if k == "st": return S.cb(uid, mid, p)
     if k == "ad": return A.callback(uid, mid, p)

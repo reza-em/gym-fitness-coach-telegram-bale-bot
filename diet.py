@@ -93,8 +93,8 @@ def supp_menu(uid, mid=None):
     else:
         lines.append("\n🧪 کراتین: غیرفعال."); rows.append([btn("➕ فعال‌کردن کراتین", "s:cset")])
     w = water_today(u); tgt = N.targets(u)["water_ml"]
-    lines.append(f"\n💧 آب امروز: {w} از {tgt} ml")
-    rows.append([btn("💧 +250", "wt:250"), btn("💧 +500", "wt:500")])
+    lines.append("\n" + water_line(w, tgt))
+    rows += water_rows(undo=w > 0)
     rows.append([btn("💡 پیشنهاد مکمل برای من", "s:rec")])
     rows.append([btn("ℹ️ گینر", "s:info:g"), btn("ℹ️ کراتین", "s:info:c")]); rows.append(ui.menu_row())
     return show(uid, mid, "\n".join(lines), kb(rows))
@@ -106,9 +106,33 @@ def log_supp(uid, kind, mid=None):
     db.ex("INSERT INTO supp(user_id,day,kind,amount,ts) VALUES(?,?,?,?,?)", (uid, util.today(u["tz"]).isoformat(), kind, amt, util.now()))
     return supp_menu(uid, mid)
 
+# Quick-add water buttons: (ml, label). Callback data stays "wt:<ml>" so buttons in old messages keep working.
+WATER_SIZES = ((250, "🥛 لیوان (۲۵۰ میلی‌لیتر)"), (500, "🧴 بطری کوچک (۵۰۰ میلی‌لیتر)"), (1500, "🍶 بطری بزرگ (۱.۵ لیتر)"))
+WATER_ML = {ml for ml, _ in WATER_SIZES}
+
+def water_line(w, tgt):
+    """'💧 آب امروز: 1750 از 3000 ml (58٪)' + a 10-cell progress bar."""
+    pct = int(round(100.0 * w / tgt)) if tgt else 0
+    filled = max(0, min(10, pct // 10))
+    return f"💧 آب امروز: {w} از {tgt} ml ({pct}٪)\n{'🟦' * filled}{'⬜' * (10 - filled)}" + (" ✅" if tgt and w >= tgt else "")
+
+def water_rows(undo=False):
+    """Keyboard rows for logging water: glass + small bottle, then large bottle (+ undo when something was logged today)."""
+    b = [btn(label, f"wt:{ml}") for ml, label in WATER_SIZES]
+    last = [b[2]] + ([btn("↩️ حذف آخرین", "wt:undo")] if undo else [])
+    return [b[:2], last]
+
 def water_add(uid, ml, mid=None):
     u = ui.U(uid)
-    db.ex("INSERT INTO water(user_id,day,ml,ts) VALUES(?,?,?,?)", (uid, util.today(u["tz"]).isoformat(), ml, util.now()))
+    if ml in WATER_ML:      # ignore forged / stale callback values
+        db.ex("INSERT INTO water(user_id,day,ml,ts) VALUES(?,?,?,?)", (uid, util.today(u["tz"]).isoformat(), ml, util.now()))
+    return supp_menu(uid, mid)
+
+def water_undo(uid, mid=None):
+    """Remove today's most recent water entry (glass or bottle)."""
+    u = ui.U(uid)
+    rid = db.val("SELECT id FROM water WHERE user_id=? AND day=? ORDER BY id DESC LIMIT 1", (uid, util.today(u["tz"]).isoformat()))
+    if rid: db.ex("DELETE FROM water WHERE id=?", (rid,))
     return supp_menu(uid, mid)
 
 def supp_cb(uid, mid, p):

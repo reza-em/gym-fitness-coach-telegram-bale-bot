@@ -295,12 +295,23 @@ m = mark(); press(TESTER, "s:info:c"); tx = texts_out(m)
 ok("۳ تا ۵ گرم" in tx and "لودینگ" in tx and "کلیوی" in tx and "پزشک" in tx, "creatine info: 3-5 g, no loading, doctor if kidney")
 press(TESTER, "s:log:creatine"); press(TESTER, "s:log:gainer"); press(TESTER, "wt:500")
 ts = D.today_supp(db.get_user(TESTER)); ok(ts.get("creatine") and ts.get("gainer") and D.water_today(db.get_user(TESTER)) == 500, "supplements + water logged")
+# water: glass / small bottle / large bottle buttons, progress, undo
+m = mark(); press(TESTER, "s:menu"); dd = datas(m); tx = texts_out(m)
+ok(all(x in dd for x in ("wt:250", "wt:500", "wt:1500", "wt:undo")) and "بطری کوچک" in str(buttons(m)) and "بطری بزرگ" in str(buttons(m)) and "m:menu" in dd, "water buttons: glass + small/large bottle + undo + back")
+press(TESTER, "wt:1500"); ok(D.water_today(db.get_user(TESTER)) == 2000, "large bottle adds 1500 ml")
+press(TESTER, "wt:250"); ok(D.water_today(db.get_user(TESTER)) == 2250, "glass adds 250 ml")
+m = mark(); press(TESTER, "wt:undo"); ok(D.water_today(db.get_user(TESTER)) == 2000 and "2000 از" in texts_out(m), "undo removes only the last entry (glass)")
+press(TESTER, "wt:undo"); ok(D.water_today(db.get_user(TESTER)) == 500, "undo removes the large bottle")
+press(TESTER, "wt:999"); press(TESTER, "wt:abc"); ok(D.water_today(db.get_user(TESTER)) == 500, "forged water amounts ignored")
+C.rate_reset()   # the extra presses above must not throttle later tests (real-time rate limiter)
+ok("(50٪)" in D.water_line(1500, 3000) and D.water_line(1500, 3000).count("🟦") == 5 and "✅" in D.water_line(3200, 3000) and D.water_line(3200, 3000).count("🟦") == 10, "water progress percent + bar")
 # reminders
 db.ex("DELETE FROM rem_sent"); 
 set_time(2026, 11, 1, 10, 5)           # Sunday (train day), 10:05
 db.ex("DELETE FROM supp WHERE user_id=?", (TESTER,)); db.ex("DELETE FROM water WHERE user_id=?", (TESTER,))
 m = mark(); n = R.tick(); tx = texts_out(m)
 ok("کراتین" in tx and "آب" in tx, "creatine + water reminders fire at 10:00 window")
+ok(any("wt:1500" in d.get("reply_markup", "") and "wt:500" in d.get("reply_markup", "") for _, d in SENT[m:]), "water reminder offers glass + bottle buttons")
 m = mark(); R.tick(); ok(mark() == m, "no duplicates the same day")
 set_time(2026, 11, 1, 17, 5); m = mark(); R.tick(); ok("امروز روز تمرینه" in texts_out(m), "workout-day reminder on a training day")
 set_time(2026, 11, 3, 23, 5)           # Tuesday... train day but late; sleep reminder

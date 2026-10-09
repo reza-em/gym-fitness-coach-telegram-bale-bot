@@ -102,7 +102,7 @@ def compose(u, kind, ts=None):
     if kind == "water":
         tgt = N.targets(u)["water_ml"]; w = diet.water_today(u)
         if w >= tgt: return None
-        return (f"💧 آب بنوش! تا الان {w} از {tgt} ml.", kb([[btn("+250", "wt:250"), btn("+500", "wt:500")]]))
+        return (f"💧 آب بنوش! تا الان {w} از {tgt} ml.", kb(diet.water_rows()))
     if kind == "sleep":
         return ("😴 وقت آماده‌شدن برای خوابه. عضله موقع خواب ساخته می‌شود؛ هدف ۷–۹ ساعت. گوشی را کنار بگذار 🌙", None)
     if kind == "weighin":
