@@ -76,6 +76,9 @@ def target():
     if P.turso_url:
         u = P.turso_url
         if u.startswith("file:"): return ("libsql", u[5:], "")
+        if not u.startswith(("libsql://", "https://", "http://", "wss://", "ws://")):
+            # without a scheme libsql would silently create a LOCAL file named like the value (e.g. swapped URL/token)
+            raise RuntimeError("TURSO_DATABASE_URL%s must start with libsql:// (are the URL and the auth token swapped?)" % ("_BALE" if P.is_bale else ""))
         return ("remote", u, P.turso_token)
     if plat.SERVERLESS and os.environ.get("TURSO_DATABASE_URL") and P.is_bale:
         raise RuntimeError("TURSO_DATABASE_URL_BALE is not set (the Bale bot needs its own Turso database)")

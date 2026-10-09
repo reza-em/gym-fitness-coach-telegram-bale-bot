@@ -16,7 +16,7 @@
 | Reminders | thread calling `remind.tick()` every 30 s | `GET/POST /api/cron/tick?platform=telegram\|bale\|all` (Bearer `CRON_SECRET`) called every 5 min by GitHub Actions (`.github/workflows/cron-tick.yml`) — Vercel Hobby cron can only run **once per day** |
 | Retries | — | duplicate deliveries ignored (`updates_seen` table, keyed by `update_id`) |
 
-Entry point: `api/index.py` (Flask WSGI `app`), config: `vercel.json` (maxDuration 120 s, Hobby allows ≤ 300 s), Python `3.13` (`.python-version`).
+Entry point: `api/index.py` (Flask WSGI `app`), config: `vercel.json` (maxDuration 120 s, Hobby allows ≤ 300 s; function region `hnd1` Tokyo = same AWS region as the Turso DB `aws-ap-northeast-1` — change both together), Python `3.13` (`.python-version`).
 
 ## Environment variables (names only) / متغیرهای محیطی
 
@@ -52,7 +52,7 @@ python3 -c "import secrets; print(secrets.token_urlsafe(32))"
 1. Sign up at https://turso.tech (free plan: 100 DBs, 5 GB, 500 M rows read, 10 M rows written / month).
    در turso.tech ثبت‌نام کنید (پلن رایگان کافی است).
 2. Install the CLI and log in: `curl -sSfL https://get.tur.so/install.sh | bash` → `turso auth login`.
-3. Create two databases in a region close to Vercel's default region `iad1` (Washington DC, AWS us-east-1):
+3. Create two databases in the same group/region (the existing DB `fitness` is in `aws-ap-northeast-1` Tokyo, matching `"regions": ["hnd1"]` in `vercel.json`):
    ```bash
    turso db create fitness-telegram
    turso db create fitness-bale

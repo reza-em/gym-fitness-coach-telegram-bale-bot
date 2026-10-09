@@ -40,6 +40,8 @@ def connect_target(platform, url_arg):
     if not url: sys.exit("%s is not set (or pass --url)" % url_env)
     if url.startswith("file:"):
         return url, libsql.connect(url[5:], isolation_level=None)
+    if not url.startswith(("libsql://", "https://", "http://", "wss://", "ws://")):
+        sys.exit("%s must start with libsql:// (are the URL and the auth token swapped?)" % url_env)
     if not token: sys.exit("%s / TURSO_AUTH_TOKEN is not set" % tok_env)
     return url, libsql.connect(database=url, auth_token=token, isolation_level=None)
 
