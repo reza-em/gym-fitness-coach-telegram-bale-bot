@@ -4,7 +4,7 @@ import os
 import config, exdata as X
 import core as C, ui
 from core import btn, kb, send
-from plat import IS_BALE
+from plat import PLAT
 from util import esc
 
 DIR = os.path.join(config.ASSETS, "ex")
@@ -29,7 +29,7 @@ def video(uid, eid):
     ex = X.EX[eid]; gif, imgs = files(eid)
     cap = f"🎬 <b>{ex['fa']}</b> ({ex['en']})\n<i>{CREDIT}</i>"
     sent = None
-    if gif and not IS_BALE:
+    if gif and not PLAT.is_bale:
         sent = C.send_animation(uid, open(gif, "rb").read(), cap)
     if sent is None and len(imgs) == 2:
         sent = C.send_media_group(uid, [open(p, "rb").read() for p in imgs], cap)

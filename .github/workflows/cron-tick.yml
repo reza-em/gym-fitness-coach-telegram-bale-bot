@@ -1,0 +1,47 @@
+name: cron-tick (reminders for the Vercel deployment)
+
+# Vercel Hobby cron jobs may run at most once per day, so this workflow calls the bot's
+# /api/cron/tick endpoint every 5 minutes instead (reminders tolerate up to 180 min delay).
+# Safe by default: if the repo secrets VERCEL_URL or CRON_SECRET are missing it does nothing.
+# Notes: GitHub runs scheduled workflows only from the DEFAULT branch (main), the schedule is
+# best effort (runs can be delayed 5-20 min under load), and GitHub disables schedules in repos
+# with no activity for 60 days (re-enable in the Actions tab).
+
+on:
+  schedule:
+    - cron: "*/5 * * * *"
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+concurrency:
+  group: cron-tick
+  cancel-in-progress: false
+
+jobs:
+  tick:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Call /api/cron/tick for Telegram and Bale
+        env:
+          VERCEL_URL: ${{ secrets.VERCEL_URL }}
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+          # platforms served by Vercel; repo variable TICK_PLATFORMS="telegram bale" once Bale moves too
+          TICK_PLATFORMS: ${{ vars.TICK_PLATFORMS || 'telegram' }}
+        run: |
+          if [ -z "$VERCEL_URL" ] || [ -z "$CRON_SECRET" ]; then
+            echo "VERCEL_URL / CRON_SECRET repo secrets not set - skipping (serverless deployment not active)."
+            exit 0
+          fi
+          BASE="${VERCEL_URL%/}"
+          case "$BASE" in http://*|https://*) ;; *) BASE="https://$BASE" ;; esac
+          rc=0
+          for P in $TICK_PLATFORMS; do
+            code=$(curl -sS -o /tmp/tick_$P.json -w '%{http_code}' --max-time 150 --retry 2 --retry-delay 10 \
+                   -X POST -H "Authorization: Bearer $CRON_SECRET" "$BASE/api/cron/tick?platform=$P" || echo 000)
+            echo "$P -> HTTP $code $(head -c 300 /tmp/tick_$P.json 2>/dev/null)"
+            [ "$code" = "200" ] || rc=1
+          done
+          exit $rc

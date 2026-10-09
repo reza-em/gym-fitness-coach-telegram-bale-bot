@@ -48,3 +48,6 @@ reports/
 .DS_Store
 .idea/
 .vscode/
+
+# Vercel CLI link folder
+.vercel/

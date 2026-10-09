@@ -22,8 +22,13 @@ export FITNESS_JEV_MODEL="${FITNESS_JEV_MODEL:-jev-latest}"
 
 PY="$DIR/venv/bin/python"; [ -x "$PY" ] || PY=python3
 
+# Platforms that run as webhooks on Vercel must NOT be polled here (bot.py would delete the webhook on start).
+# Set in .env, e.g. FITNESS_DISABLE_POLLING=telegram   (rollback: remove it, then ./run.sh telegram)
+disabled() { case " ${FITNESS_DISABLE_POLLING//,/ } " in *" $1 "*) return 0 ;; esac; return 1; }
+
 if [ "$1" = "--loop" ]; then          # internal: supervisor loop for platform $2
   P="$2"
+  disabled "$P" && exit 0
   if [ "$P" = "bale" ]; then LOG=bale.log; else LOG=bot.log; fi
   exec 9>"run_$P.lock"
   flock -n 9 || exit 0                # only one supervisor per platform, ever
@@ -44,6 +49,7 @@ fi
 start_one() {
   local P="$1" VAR LOG
   if [ "$P" = "bale" ]; then VAR=FITNESS_BALE_BOT_TOKEN; LOG=bale.log; else VAR=FITNESS_TELEGRAM_BOT_TOKEN; LOG=bot.log; fi
+  if disabled "$P"; then echo "$P polling disabled (FITNESS_DISABLE_POLLING) - it runs on Vercel; not started"; return 1; fi
   if [ -z "$(printenv "$VAR")" ]; then echo "$VAR not set - $P bot not started"; return 1; fi
   if [ -f "run_$P.pid" ] && kill -0 "$(cat "run_$P.pid")" 2>/dev/null; then
     echo "fitness-bot ($P) already running (supervisor pid $(cat "run_$P.pid"))"; return 0

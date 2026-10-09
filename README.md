@@ -193,3 +193,7 @@ FITNESS_PLATFORM=bale ./venv/bin/python test_offline.py   # همان آزمون�
 - هفته‌ها از روز شروع (روز ثبت‌نام) شمرده می‌شوند.
 - کالری و ماکرو غذاها تقریبی (±۱۵٪) و متن‌های آموزشی/منو بازبینی‌نشده توسط متخصص‌اند.
 
+
+## ☁️ Serverless (Vercel + Turso)
+The `serverless-vercel` branch can also run as a Vercel function (webhooks for Telegram and Bale, Turso/libSQL storage,
+reminders via a 5-minute GitHub Actions tick). Polling mode is unchanged. See [DEPLOY_VERCEL.md](DEPLOY_VERCEL.md).

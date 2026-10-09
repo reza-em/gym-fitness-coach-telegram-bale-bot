@@ -1,0 +1,19 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "regions": [
+    "hnd1"
+  ],
+  "functions": {
+    "api/index.py": {
+      "maxDuration": 120,
+      "includeFiles": "{assets/**,*.py}",
+      "excludeFiles": "{.venv/**,venv/**,docs/**,scripts/**,test_*.py,**/__pycache__/**,*.db,*.db-wal,*.db-shm,*.log,*.lock,*.pid,fetch_exercise_media.py,gen_exercises_pdf.py}"
+    }
+  },
+  "rewrites": [
+    {
+      "source": "/api/(.*)",
+      "destination": "/api/index"
+    }
+  ]
+}

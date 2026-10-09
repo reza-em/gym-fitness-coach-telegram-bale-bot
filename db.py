@@ -1,10 +1,22 @@
-"""SQLite (WAL) storage: one connection per thread, explicit transactions, tiny helpers."""
-import os, json, threading, sqlite3
-from contextlib import contextmanager
-import config, util
+"""Storage: SQLite (WAL) locally, or Turso / libSQL when TURSO_DATABASE_URL(_BALE) is set (serverless).
+One connection per (thread, database), explicit transactions, tiny helpers.
 
-_path = config.DB_PATH
+Which database is used is decided per call from the active platform (plat.PLAT), so one serverless process can
+serve Telegram and Bale with two separate databases:
+  * set_path(p) override (tests)           -> local SQLite file p
+  * PLAT.turso_url set (libsql://..., https://..., or file:/path for a local libSQL file) -> libSQL client
+  * otherwise                              -> local SQLite file PLAT.db_path (fitness.db / fitness_bale.db)
+FITNESS_DB_DRIVER=libsql forces the libSQL client for local files too (used by the tests)."""
+import os, json, time, threading, sqlite3, logging
+from contextlib import contextmanager
+import config, util, plat
+
+log = logging.getLogger("bot")
+_path = None                     # explicit override (set_path); None -> per-platform target
 _local = threading.local()
+_schema_done = set()             # targets whose schema/migrations ran in this process
+_schema_lock = threading.Lock()
+REMOTE_IDLE_RECONNECT = 4.0      # Turso/Hrana streams expire after ~10 s idle: open a fresh (cheap, lazy) connection before that
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS meta(key TEXT PRIMARY KEY, value TEXT);
@@ -48,6 +60,7 @@ CREATE TABLE IF NOT EXISTS checkins(
   rate REAL, action TEXT, kcal_change INTEGER NOT NULL DEFAULT 0, ts INTEGER
 );
 CREATE TABLE IF NOT EXISTS activity(day TEXT NOT NULL, user_id INTEGER NOT NULL, PRIMARY KEY(day, user_id));
+CREATE TABLE IF NOT EXISTS updates_seen(update_id INTEGER PRIMARY KEY, ts INTEGER NOT NULL);
 """
 
 def now(): return util.now()
@@ -56,12 +69,103 @@ def set_path(p):
     global _path
     _path = p; close_all()
 
+def target():
+    """-> (kind, location, auth_token) for the active platform."""
+    if _path: return ("libsql" if os.environ.get("FITNESS_DB_DRIVER") == "libsql" else "sqlite", _path, "")
+    P = plat.current()
+    if P.turso_url:
+        u = P.turso_url
+        if u.startswith("file:"): return ("libsql", u[5:], "")
+        if not u.startswith(("libsql://", "https://", "http://", "wss://", "ws://")):
+            # without a scheme libsql would silently create a LOCAL file named like the value (e.g. swapped URL/token)
+            raise RuntimeError("TURSO_DATABASE_URL%s must start with libsql:// (are the URL and the auth token swapped?)" % ("_BALE" if P.is_bale else ""))
+        return ("remote", u, P.turso_token)
+    if plat.SERVERLESS and os.environ.get("TURSO_DATABASE_URL") and P.is_bale:
+        raise RuntimeError("TURSO_DATABASE_URL_BALE is not set (the Bale bot needs its own Turso database)")
+    return ("libsql" if os.environ.get("FITNESS_DB_DRIVER") == "libsql" else "sqlite", P.db_path, "")
+
+def _conns():
+    d = getattr(_local, "conns", None)
+    if d is None: d = _local.conns = {}
+    return d
+
 def close_all():
-    c = getattr(_local, "c", None)
-    if c:
-        try: c[1].close()
-        except Exception: pass
-    _local.c = None
+    for key, c in list(_conns().items()):
+        if key[0] == "sqlite":
+            try: c["cn"].close()
+            except Exception: pass
+        # libSQL connections are just dropped (Connection.close() on a remote connection panics in libsql 0.1.x)
+    _conns().clear()
+
+# ---------------- libSQL adapter (sqlite3-like rows: r[0], r["col"], dict(r)) ----------------
+class Row(tuple):
+    """Tuple row that also supports r["col"], keys() and dict(r) like sqlite3.Row."""
+    __slots__ = ()
+    _cols = ()
+    def keys(self): return list(self._cols)
+    def __getitem__(self, k):
+        if isinstance(k, str): return tuple.__getitem__(self, self._cols.index(k))
+        return tuple.__getitem__(self, k)
+
+def _row_class(cols):
+    return type("Row", (Row,), {"__slots__": (), "_cols": cols})
+
+class _LCur:
+    def __init__(self, cur):
+        self._cur = cur
+        desc = cur.description or ()
+        self._cls = _row_class(tuple(d[0] for d in desc)) if desc else None
+    def _wrap(self, r): return None if r is None else (self._cls(r) if self._cls else r)
+    def fetchone(self): return self._wrap(self._cur.fetchone())
+    def fetchall(self): return [self._wrap(r) for r in self._cur.fetchall()]
+    def __iter__(self): return iter(self.fetchall())
+    @property
+    def rowcount(self): return self._cur.rowcount
+    @property
+    def lastrowid(self): return self._cur.lastrowid
+    @property
+    def description(self): return self._cur.description
+
+def split_sql(script):
+    """Split a simple ';'-separated script (no ';' inside literals/triggers - true for SCHEMA) into statements."""
+    return [x.strip() for x in script.split(";") if x.strip()]
+
+def _transient(e):
+    m = str(e).lower()
+    return any(w in m for w in ("stream_expired", "stream has expired", "baton", "connection reset", "connection refused", "timed out", "broken pipe", "error sending request"))
+
+class _LConn:
+    """Wraps a libsql Connection: sqlite3-like rows, and a fresh connection when the remote stream may have expired."""
+    def __init__(self, kind, loc, token):
+        self.kind, self.loc, self.token = kind, loc, token
+        self.cn = None; self.last = 0.0; self.depth = 0
+    def _open(self):
+        import libsql
+        if self.kind == "remote": self.cn = libsql.connect(database=self.loc, auth_token=self.token, isolation_level=None)
+        else: self.cn = libsql.connect(self.loc, isolation_level=None)
+    def _get(self):
+        if self.cn is None or (self.kind == "remote" and self.depth == 0 and time.time() - self.last > REMOTE_IDLE_RECONNECT):
+            self._open()
+        return self.cn
+    def execute(self, sql, args=()):
+        cn = self._get()
+        try:
+            cur = cn.execute(sql, tuple(args))
+        except Exception as e:
+            if self.kind != "remote" or self.depth or not _transient(e): raise
+            log.info("libsql: reconnecting after %s", type(e).__name__)
+            self._open(); cur = self.cn.execute(sql, tuple(args))
+        self.last = time.time()
+        return _LCur(cur)
+    def executescript(self, script):
+        # Remote: run statement by statement. libsql's remote executescript re-serialises multi-statement scripts and
+        # upper-cases keyword-like identifiers (a column `key` became `KEY`, `action` -> `ACTION`), which breaks r["key"].
+        if self.kind == "remote":
+            for stmt in split_sql(script): self.execute(stmt)
+            return
+        self._get().executescript(script)
+        self.last = time.time()
+    def close(self): self.cn = None
 
 def _migrate(cn):
     """Idempotent upgrades. v4: users.body_cat. v3: users.macro_target. v2: users.sex ('m'/'f'); every existing user (e.g. Tester) becomes male."""
@@ -74,41 +178,61 @@ def _migrate(cn):
     if "body_cat" not in cols:          # v4: 📂 body-type override 'fat'/'lean'/'fit' (NULL = automatic from BMI + goal, programs_db.py)
         cn.execute("ALTER TABLE users ADD COLUMN body_cat TEXT")
 
-def conn():
-    c = getattr(_local, "c", None)
-    if c and c[0] == _path: return c[1]
-    if c:
-        try: c[1].close()
-        except Exception: pass
-    d = os.path.dirname(_path)
-    if d: os.makedirs(d, exist_ok=True)
-    new = not os.path.exists(_path)
-    cn = sqlite3.connect(_path, timeout=30, isolation_level=None, check_same_thread=False)
-    cn.row_factory = sqlite3.Row
-    cn.execute("PRAGMA journal_mode=WAL"); cn.execute("PRAGMA synchronous=NORMAL"); cn.execute("PRAGMA busy_timeout=30000")
-    cn.executescript(SCHEMA)
-    _migrate(cn)
-    if new:
-        try: os.chmod(_path, 0o600)
-        except OSError: pass
-    _local.c = (_path, cn); _local.depth = 0
-    return cn
+def _ensure_schema(key, cn):
+    if key in _schema_done: return
+    with _schema_lock:
+        if key in _schema_done: return
+        cn.executescript(SCHEMA)
+        _migrate(cn)
+        _schema_done.add(key)
+
+def _entry():
+    key = target(); conns = _conns()
+    c = conns.get(key)
+    if c: return c
+    kind, loc, token = key
+    if kind == "remote":
+        cn = _LConn(kind, loc, token)
+    else:
+        d = os.path.dirname(loc)
+        if d: os.makedirs(d, exist_ok=True)
+        new = not os.path.exists(loc)
+        if kind == "libsql":
+            cn = _LConn(kind, loc, token)
+            cn.execute("PRAGMA journal_mode=WAL"); cn.execute("PRAGMA busy_timeout=30000")
+        else:
+            cn = sqlite3.connect(loc, timeout=30, isolation_level=None, check_same_thread=False)
+            cn.row_factory = sqlite3.Row
+            cn.execute("PRAGMA journal_mode=WAL"); cn.execute("PRAGMA synchronous=NORMAL"); cn.execute("PRAGMA busy_timeout=30000")
+        if new:
+            try: os.chmod(loc, 0o600)
+            except OSError: pass
+    if kind == "remote": _ensure_schema(key, cn)            # once per process (each statement is a network round trip)
+    else: cn.executescript(SCHEMA); _migrate(cn)             # local file: every new connection (cheap; the file may be new)
+    c = conns[key] = {"cn": cn, "depth": 0}
+    return c
+
+def conn(): return _entry()["cn"]
 
 @contextmanager
 def tx():
-    cn = conn(); depth = getattr(_local, "depth", 0)
-    if depth:
-        _local.depth = depth + 1
+    c = _entry(); cn = c["cn"]
+    if c["depth"]:
+        c["depth"] += 1
         try: yield cn
-        finally: _local.depth -= 1
+        finally: c["depth"] -= 1
         return
-    cn.execute("BEGIN IMMEDIATE"); _local.depth = 1
+    cn.execute("BEGIN IMMEDIATE"); c["depth"] = 1
+    if isinstance(cn, _LConn): cn.depth = 1
     try:
         yield cn; cn.execute("COMMIT")
     except BaseException:
-        cn.execute("ROLLBACK"); raise
+        try: cn.execute("ROLLBACK")
+        except Exception: pass
+        raise
     finally:
-        _local.depth = 0
+        c["depth"] = 0
+        if isinstance(cn, _LConn): cn.depth = 0
 
 def q(sql, args=()): return [dict(r) for r in conn().execute(sql, args).fetchall()]
 def q1(sql, args=()):
@@ -172,3 +296,13 @@ def is_admin(uid):
 
 def is_banned(uid):
     u = get_user(uid); return bool(u and u["banned"])
+
+# ---- webhook idempotency (Telegram/Bale re-deliver an update when our response is slow or not 200) ----
+def claim_update(update_id):
+    """True the first time this update_id is seen for the active platform's database, False for a re-delivery."""
+    if update_id is None: return True
+    cur = ex("INSERT OR IGNORE INTO updates_seen(update_id, ts) VALUES(?,?)", (int(update_id), now()))
+    return (cur.rowcount or 0) > 0
+
+def prune_updates(keep_days=3):
+    ex("DELETE FROM updates_seen WHERE ts < ?", (now() - keep_days * 86400,))
